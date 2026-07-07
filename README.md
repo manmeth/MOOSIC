@@ -10,7 +10,7 @@ Inspired by traditional music streaming services, we've reimagined the way peopl
 
 ---
 
-# 🎵 Why Moosic?
+# Why Moosic?
 
 Most music streaming platforms focus on delivering songs.
 
@@ -20,7 +20,7 @@ Music is personal, and your streaming platform should be too. Moosic learns your
 
 ---
 
-# 🚀 What Makes Moosic Different?
+# What Makes Moosic Different?
 
 ### 🤖 AI Playlist Naming
 
@@ -62,7 +62,7 @@ Moosic streamlines everyday actions like discovering songs, creating playlists, 
 
 ---
 
-# 🌟 Our Vision
+#  Our Vision
 
 At Moosic, we believe technology should enhance the way people connect with music—not complicate it.
 
