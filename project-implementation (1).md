@@ -24,11 +24,9 @@
 
 ## 3. Implementation Plan
 
-The implementation plan below is taken from the team's Excel tracker and covers the development period from **2 September to 18 September 2026**. The plan is organised as clear missions so the team can move from setup and design through backend/frontend work, security, custom features, integration, testing, scalability and documentation.
-
 | Mission | Start | End | Days | Primary Owners | Key Output / Definition of Done | Dependencies | Status | GitHub / Evidence |
 |---|---|---|---:|---|---|---|---|---|
-| **M01 — Setup + Traceability** | 2 Sep | 2 Sep | 1 | Everyone | GitHub structure ready; `docs/` folder present; `project-implementation.md` and team tracker started. | None | Pending | Repo link / initial commit |
+| **M01 — Setup + Traceability** | 19 Aug | 19 Aug | 1 | Everyone | GitHub structure ready; `docs/` folder present; `project-implementation.md` and team tracker started. | None | Pending | Repo link / initial commit |
 | **M02 — Architecture + Data Design** | 2 Sep | 4 Sep | 3 | Udditee + Manmeet | Architecture map, draw.io, data flow and ER/database design agreed. | M01 | Pending | Diagram / database evidence |
 | **M03 — Backend Foundation** | 3 Sep | 6 Sep | 4 | Manmeet + Siya | Core backend/API, Component 11 backend and database connectivity are runnable. | M02 | Pending | Commits + API/database tests |
 | **M04 — Frontend Foundation** | 3 Sep | 6 Sep | 4 | Udditee | Core UI, navigation, dashboard and playlist views are working. | M02 | Pending | Screenshots + commit |
@@ -86,14 +84,6 @@ The implementation plan below is taken from the team's Excel tracker and covers 
 | T039 | System Testing + Failure Scenarios + Recovery Demo | Testing / Reliability | Everyone | Pending | — | — | No | No | — | Test core workflows, five failure categories and recovery behaviour; record evidence. |
 | T040 | `docs/project-implementation.md` Evidence Audit | Documentation / Work Log | Everyone | Pending | — | — | No | No | — | Check that significant tasks have correct task ID, component, owner, status, completion details, AI assistance and evidence. |
 
-## 5. GitHub Documentation Expectations
-
-- `docs/project-implementation.md` is the project's implementation work log and contribution record.
-- The team spreadsheet is the convenient visual tracker/dashboard. The GitHub Markdown file records the same significant work in repository form.
-- For completed work, record evidence such as a GitHub commit, pull request/issue, changed file/module, screenshot, test result, API response, database result, or working demonstration.
-- The student responsible for a task must verify the implementation and must be able to explain the contribution during evaluation.
-- AI tools may assist with implementation, but the student who reviews, integrates, tests and verifies the work must be recorded as `Completed By`.
-
 ## 6. Moosic Feature Traceability
 
 | Moosic feature / requirement | Main task(s) | Primary owner(s) |
@@ -113,8 +103,6 @@ The implementation plan below is taken from the team's Excel tracker and covers 
 
 ## 7. Individual Evidence Checklist
 
-Every member should maintain evidence for their own contributions, especially for Component 14 and any algorithm, security, integration or technical improvement task.
-
 | Member | Minimum evidence to maintain |
 |---|---|
 | Erin | Firewall/network configuration or diagram, security-control documentation, failure/recovery tests, screenshots/commits |
@@ -122,7 +110,3 @@ Every member should maintain evidence for their own contributions, especially fo
 | Siya | Component 11 code, Moo Bot service/API, validation/error handling, Component 14 evidence and demo/test result |
 | Srinidhi | Authentication/encryption/authorization implementation, integration tests, scalability calculations, Component 14 evidence |
 | Udditee | Architecture/data-flow diagrams, frontend commits, theme and Recycle Bin UI, Component 14 evidence and screenshots |
-
-## 8. Update Rule
-
-When a task moves from `Pending` to `In Progress`, `Completed`, `Blocked`, or `Reopened`, update the task entry with the latest status and, where applicable, completion date, completed-by name, AI assistance and GitHub/evidence details.
