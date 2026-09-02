@@ -110,3 +110,7 @@
 | Siya | Component 11 code, Moo Bot service/API, validation/error handling, Component 14 evidence and demo/test result |
 | Srinidhi | Authentication/encryption/authorization implementation, integration tests, scalability calculations, Component 14 evidence |
 | Udditee | Architecture/data-flow diagrams, frontend commits, theme and Recycle Bin UI, Component 14 evidence and screenshots |
+
+### 8. Our google sheet which shows real time tracking of our work
+
+https://docs.google.com/spreadsheets/d/1KLQCLskJsa34GHOe-BQRSIodMnRDIBdcmh4NvQDDPYY/edit?usp=sharing
