@@ -102,3 +102,25 @@ def get_songs(db: Session = Depends(get_db)):
     songs = db.query(models.Song).all()
 
     return songs
+@app.post("/albums")
+def create_album(
+    album: schemas.AlbumCreate,
+    db: Session = Depends(get_db)
+):
+    new_album = models.Album(
+        title=album.title,
+        artist_id=album.artist_id,
+        release_date=album.release_date,
+        cover_url=album.cover_url
+    )
+
+    db.add(new_album)
+    db.commit()
+    db.refresh(new_album)
+
+    return {
+        "message": "Album created successfully!",
+        "album_id": new_album.id,
+        "title": new_album.title,
+        "artist_id": new_album.artist_id
+    }

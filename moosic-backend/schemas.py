@@ -15,3 +15,8 @@ class SongCreate(BaseModel):
     duration: int | None = None
     audio_url: str | None = None
     cover_url: str | None = None
+class AlbumCreate(BaseModel):
+    title: str
+    artist_id: int
+    release_date: str | None = None
+    cover_url: str | None = None
