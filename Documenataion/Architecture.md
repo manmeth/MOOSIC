@@ -176,6 +176,8 @@ playlists
 
 Then:
 
+
+
 ┌──────────────────────────────────────────────────────┐
 │                                                      │
 │  MAKE A NEW RECORD / AI NAMING DESK                  │
@@ -260,6 +262,8 @@ Your existing data-flow already contains Deleted_Playlists, so we don't have to 
 **6.  Search**
 
 Your search screen is:
+
+
 
 THE LISTENING DESK / 004
 
