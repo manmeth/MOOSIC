@@ -1,4 +1,4 @@
-<img width="1033" height="767" alt="moosic final" src="https://github.com/user-attachments/assets/c98270de-1101-4da1-a0d7-8a1921697286" />
+<img width="767" height="570" alt="moosic final" src="https://github.com/user-attachments/assets/c98270de-1101-4da1-a0d7-8a1921697286" />
 🐄 Moosic
 
 ### *Your Daily Dose of Moo-sic.*
