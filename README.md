@@ -5,7 +5,7 @@
 
 ## Music should adapt to you—not the other way around.
 
-Moosic is a next-generation music streaming platform built around one simple idea: **every listener deserves a personalized experience**.
+Moosic is a next-generation music streaming platform built around one simple idea: **every listener deserves a personalized experience.**
 
 Inspired by traditional music streaming services, we've reimagined the way people discover and enjoy music through AI-powered personalization, expressive customization, and a user-first approach. From intelligent playlist creation to customizable themes, every feature is designed to make listening more personal, effortless, and enjoyable.
 
