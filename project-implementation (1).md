@@ -27,7 +27,7 @@
 | Mission | Start | End | Days | Primary Owners | Key Output / Definition of Done | Dependencies | Status | GitHub / Evidence |
 |---|---|---|---:|---|---|---|---|---|
 | **M01 — Setup + Traceability** | 19 Aug | 19 Aug | 1 | Everyone | GitHub structure ready; `docs/` folder present; `project-implementation.md` and team tracker started. | None | Pending | Repo link / initial commit |
-| **M02 — Architecture + Data Design** | 2 Sep | 4 Sep | 3 | Udditee + Manmeet | Architecture map, draw.io, data flow and ER/database design agreed. | M01 | Pending | Diagram / database evidence |
+| **M02 — Architecture + Data Design** | 2 Sep | 4 Sep | 3 | Udditee + Manmeet | Architecture map, draw.io, data flow and ER/database design agreed. | M01 | In Progress| Diagram / database evidence |
 | **M03 — Backend Foundation** | 3 Sep | 6 Sep | 4 | Manmeet + Siya | Core backend/API, Component 11 backend and database connectivity are runnable. | M02 | Pending | Commits + API/database tests |
 | **M04 — Frontend Foundation** | 3 Sep | 6 Sep | 4 | Udditee | Core UI, navigation, dashboard and playlist views are working. | M02 | Pending | Screenshots + commit |
 | **M05 — Authentication + Security Base** | 5 Sep | 8 Sep | 4 | Srinidhi + Erin | Authentication, authorization, encryption and firewall/network controls attached to the design. | M03 + M04 | Pending | Security configuration/tests |
