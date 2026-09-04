@@ -1,4 +1,5 @@
 <img width="767" height="570" alt="moosic final" src="https://github.com/user-attachments/assets/c98270de-1101-4da1-a0d7-8a1921697286" />
+
 🐄 Moosic
 
 ### *Your Daily Dose of Moo-sic.*
@@ -6,8 +7,6 @@
 ## Music should adapt to you—not the other way around.
 
 Moosic is a next-generation music streaming platform built around one simple idea: **every listener deserves a personalized experience.**
-
-Inspired by traditional music streaming services, we've reimagined the way people discover and enjoy music through AI-powered personalization, expressive customization, and a user-first approach. From intelligent playlist creation to customizable themes, every feature is designed to make listening more personal, effortless, and enjoyable.
 
 ---
 
@@ -92,7 +91,6 @@ Together, these systems transform everyday interactions into meaningful recommen
 # Core Features
 
 - 🤖 AI-powered playlist naming
-- 🎵 Personalized music recommendations
 - 🎨 Dynamic and customizable themes
 - 🗑️ Playlist recovery
 - 🔒 Private accounts & playlists
