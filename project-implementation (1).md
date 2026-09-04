@@ -2,7 +2,11 @@
 
 **Project:** Moosic — a Spotify-inspired music platform with custom mood-based themes, AI-generated playlist naming (Moo Bot), and a Recycle Bin for playlists.
 
-## 1. Team Responsibilities
+### 1. Our google sheet which shows real time tracking of our work
+
+https://docs.google.com/spreadsheets/d/1KLQCLskJsa34GHOe-BQRSIodMnRDIBdcmh4NvQDDPYY/edit?usp=sharing
+
+## 2. Team Responsibilities
 
 | Member | Primary responsibilities |
 |---|---|
@@ -12,7 +16,7 @@
 | Srinidhi | Authentication; frontend–backend integration; encryption/data protection; authorization/security controls; failure & recovery (storage/security); Component 14 encryption/auth enhancement; integration testing/bug fixing; quantitative scalability calculations; shared integration, testing and documentation work |
 | Udditee | Architecture/component map; draw.io architecture and data flow; frontend; mood-based themes; playlist/dashboard UI; Recycle Bin frontend UX; Component 14 responsive theme/UI enhancement; shared integration, testing and documentation work |
 
-## 2. Status Definitions
+## 3. Status Definitions
 
 | Status | Meaning |
 |---|---|
@@ -22,7 +26,7 @@
 | Blocked | Development cannot proceed because of a documented technical dependency or problem. |
 | Reopened | A previously completed task has been found to contain a problem and requires additional work. |
 
-## 3. Implementation Plan
+## 4. Implementation Plan
 
 | Mission | Start | End | Days | Primary Owners | Key Output / Definition of Done | Dependencies | Status | GitHub / Evidence |
 |---|---|---|---:|---|---|---|---|---|
@@ -39,7 +43,7 @@
 | **M11 — Final Testing + Viva Prep** | 16 Sep | 17 Sep | 2 | Everyone | Working demo rehearsed; each student can locate and explain their implementation. | M08 | Pending | Demo checklist + evidence |
 | **M12 — Report + Final Freeze** | 17 Sep | 18 Sep | 2 | Everyone | Final report assembled; required technical sections checked; regression check complete. | M10 + M11 | Pending | Final repo state + report |
 
-## 4. Official Work Log
+## 5. Official Work Log
 
 | Task ID | Task | Component | Assigned To | Status | Completed By | Date Completed | AI Assistance | GitHub? | Evidence / Commit / File | Notes / Acceptance Criteria |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -110,7 +114,3 @@
 | Siya | Component 11 code, Moo Bot service/API, validation/error handling, Component 14 evidence and demo/test result |
 | Srinidhi | Authentication/encryption/authorization implementation, integration tests, scalability calculations, Component 14 evidence |
 | Udditee | Architecture/data-flow diagrams, frontend commits, theme and Recycle Bin UI, Component 14 evidence and screenshots |
-
-### 8. Our google sheet which shows real time tracking of our work
-
-https://docs.google.com/spreadsheets/d/1KLQCLskJsa34GHOe-BQRSIodMnRDIBdcmh4NvQDDPYY/edit?usp=sharing
