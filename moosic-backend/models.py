@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -14,7 +14,7 @@ class User(Base):
     password = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    playlists = relationship("Playlist", back_populates="user")
+    playlists = relationship("Playlist", back_populates="user", cascade="all, delete-orphan")
 
 
 class Artist(Base):
@@ -25,6 +25,7 @@ class Artist(Base):
     image_url = Column(String, nullable=True)
 
     songs = relationship("Song", back_populates="artist")
+    albums = relationship("Album", back_populates="artist")
 
 
 class Album(Base):
@@ -37,6 +38,7 @@ class Album(Base):
     cover_url = Column(String, nullable=True)
 
     songs = relationship("Song", back_populates="album")
+    artist = relationship("Artist", back_populates="albums")
 
 
 class Song(Base):
@@ -49,6 +51,7 @@ class Song(Base):
     album_id = Column(Integer, ForeignKey("albums.id"))
 
     genre = Column(String, nullable=True)
+    language = Column(String, nullable=False, default="English")
     duration = Column(Integer, nullable=True)
     audio_url = Column(String, nullable=True)
     cover_url = Column(String, nullable=True)
@@ -75,6 +78,7 @@ class Playlist(Base):
 
 class LikedSong(Base):
     __tablename__ = "liked_songs"
+    __table_args__ = (UniqueConstraint("user_id", "song_id", name="uq_liked_song"),)
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
@@ -91,6 +95,7 @@ class ListeningHistory(Base):
 
 class PlaylistSong(Base):
     __tablename__ = "playlist_songs"
+    __table_args__ = (UniqueConstraint("playlist_id", "song_id", name="uq_playlist_song"),)
 
     id = Column(Integer, primary_key=True, index=True)
 
