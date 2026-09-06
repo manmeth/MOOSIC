@@ -68,12 +68,14 @@ class Playlist(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
 
     cover_url = Column(String, nullable=True)
+    description = Column(String, nullable=True)
 
     # Recycle Bin
     is_deleted = Column(Boolean, default=False)
     deleted_at = Column(DateTime, nullable=True)
 
     user = relationship("User", back_populates="playlists")
+    songs = relationship("PlaylistSong", back_populates="playlist", cascade="all, delete-orphan")
 
 
 class LikedSong(Base):
@@ -92,6 +94,31 @@ class ListeningHistory(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     song_id = Column(Integer, ForeignKey("songs.id"))
     played_at = Column(DateTime, default=datetime.utcnow)
+    progress_seconds = Column(Integer, default=0)
+    completed = Column(Boolean, default=False)
+    skipped = Column(Boolean, default=False)
+
+
+class PlaybackState(Base):
+    __tablename__ = "playback_states"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_playback_user"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    song_id = Column(Integer, ForeignKey("songs.id"), nullable=True)
+    position_seconds = Column(Integer, default=0)
+    is_playing = Column(Boolean, default=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class QueueItem(Base):
+    __tablename__ = "queue_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    song_id = Column(Integer, ForeignKey("songs.id"), nullable=False)
+    position = Column(Integer, nullable=False)
+    added_at = Column(DateTime, default=datetime.utcnow)
 
 class PlaylistSong(Base):
     __tablename__ = "playlist_songs"
@@ -108,3 +135,5 @@ class PlaylistSong(Base):
         Integer,
         ForeignKey("songs.id")
     )
+    position = Column(Integer, nullable=False, default=0)
+    playlist = relationship("Playlist", back_populates="songs")

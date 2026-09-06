@@ -38,11 +38,32 @@ class SongCreate(BaseModel):
 class PlaylistCreate(BaseModel):
     name: str
     cover_url: str | None = None
+    description: str | None = None
+
+
+class PlaylistUpdate(BaseModel):
+    name: str | None = None
+    cover_url: str | None = None
+    description: str | None = None
 
 
 class PlaylistSongAdd(BaseModel):
     song_id: int
     user_id: int | None = None
+
+
+class PlaylistSongReorder(BaseModel):
+    song_ids: list[int]
+
+
+class QueueSongAdd(BaseModel):
+    song_id: int
+
+
+class PlaybackStateUpdate(BaseModel):
+    song_id: int | None = None
+    position_seconds: int = 0
+    is_playing: bool = False
 
 
 class LikeSongCreate(BaseModel):
@@ -51,6 +72,9 @@ class LikeSongCreate(BaseModel):
 
 class ListeningHistoryCreate(BaseModel):
     song_id: int
+    progress_seconds: int = 0
+    completed: bool = False
+    skipped: bool = False
 
 
 class AudioUrlUpdate(BaseModel):

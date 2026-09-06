@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta
+import os
 
 import bcrypt
 import jwt
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from database import SessionLocal, create_tables, get_db
@@ -10,7 +11,7 @@ import models
 import schemas
 
 
-SECRET_KEY = "moosic-secret-key-change-me"
+SECRET_KEY = os.getenv("MOOSIC_SECRET_KEY", "moosic-development-secret-change-me")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 
@@ -65,6 +66,12 @@ def serialize_album(album):
     data = serialize_model(album)
     data["artist_name"] = album.artist.name if album.artist else None
     data["songs"] = [serialize_song(song) for song in album.songs]
+    return data
+
+
+def serialize_playlist(playlist):
+    data = serialize_model(playlist)
+    data["song_count"] = len(playlist.songs)
     return data
 
 
@@ -742,8 +749,12 @@ def create_song(song: schemas.SongCreate, db: Session = Depends(get_db)):
 
 
 @app.get("/songs")
-def get_songs(db: Session = Depends(get_db)):
-    songs = db.query(models.Song).all()
+def get_songs(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    songs = db.query(models.Song).order_by(models.Song.id).offset(offset).limit(limit).all()
     return [serialize_song(song) for song in songs]
 
 
@@ -810,8 +821,11 @@ def get_library(db: Session = Depends(get_db)):
 
 
 @app.get("/songs/search")
-def search_songs(q: str, limit: int = 10, db: Session = Depends(get_db)):
-    query_term = f"%{q.strip()}%"
+def search_songs(q: str, limit: int = Query(10, ge=1, le=100), db: Session = Depends(get_db)):
+    normalized_query = q.strip()
+    if not normalized_query:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Search query cannot be empty")
+    query_term = f"%{normalized_query}%"
     songs = (
         db.query(models.Song)
         .join(models.Artist, models.Artist.id == models.Song.artist_id)
@@ -839,31 +853,38 @@ def get_recommendations(user_id: int, db: Session = Depends(get_db)):
     )
     liked_song_ids = {song_id for (song_id,) in liked_songs}
 
-    if liked_song_ids:
-        liked_song_genres = (
-            db.query(models.Song.genre)
-            .filter(models.Song.id.in_(liked_song_ids))
-            .all()
-        )
-        genres = {genre for (genre,) in liked_song_genres if genre}
-    else:
-        genres = set()
-
-    recommended = (
-        db.query(models.Song)
-        .filter(
-            (models.Song.genre.in_(list(genres))) if genres else True,
-            models.Song.id.notin_(list(liked_song_ids)) if liked_song_ids else True,
-        )
-        .order_by(models.Song.id)
-        .limit(5)
+    history = (
+        db.query(models.ListeningHistory)
+        .filter(models.ListeningHistory.user_id == user_id)
+        .order_by(models.ListeningHistory.played_at.desc())
+        .limit(100)
         .all()
     )
+    preference_song_ids = liked_song_ids | {item.song_id for item in history}
+    preference_songs = (
+        db.query(models.Song).filter(models.Song.id.in_(preference_song_ids)).all()
+        if preference_song_ids else []
+    )
+    genre_scores = {}
+    language_scores = {}
+    artist_scores = {}
+    for song in preference_songs:
+        weight = 3 if song.id in liked_song_ids else 1
+        genre_scores[song.genre] = genre_scores.get(song.genre, 0) + weight
+        language_scores[song.language] = language_scores.get(song.language, 0) + weight
+        artist_scores[song.artist_id] = artist_scores.get(song.artist_id, 0) + weight
 
-    if not recommended:
-        recommended = db.query(models.Song).order_by(models.Song.id).limit(5).all()
-
-    return [serialize_song(song) for song in recommended]
+    candidates = db.query(models.Song).filter(~models.Song.id.in_(preference_song_ids)).all() if preference_song_ids else db.query(models.Song).all()
+    candidates.sort(
+        key=lambda song: (
+            genre_scores.get(song.genre, 0) * 4
+            + language_scores.get(song.language, 0) * 2
+            + artist_scores.get(song.artist_id, 0),
+            song.id,
+        ),
+        reverse=True,
+    )
+    return [serialize_song(song) for song in candidates[:10]]
 
 
 @app.post("/users/{user_id}/playlists")
@@ -874,6 +895,7 @@ def create_playlist(user_id: int, playlist: schemas.PlaylistCreate, db: Session 
         name=playlist.name,
         user_id=user_id,
         cover_url=playlist.cover_url,
+        description=playlist.description,
     )
     db.add(new_playlist)
     db.commit()
@@ -890,8 +912,26 @@ def create_playlist(user_id: int, playlist: schemas.PlaylistCreate, db: Session 
 @app.get("/users/{user_id}/playlists")
 def get_user_playlists(user_id: int, db: Session = Depends(get_db)):
     get_user_or_404(db, user_id)
-    playlists = db.query(models.Playlist).filter(models.Playlist.user_id == user_id).all()
-    return [serialize_model(playlist) for playlist in playlists]
+    playlists = (
+        db.query(models.Playlist)
+        .filter(models.Playlist.user_id == user_id, models.Playlist.is_deleted.is_(False))
+        .order_by(models.Playlist.id.desc())
+        .all()
+    )
+    return [serialize_playlist(playlist) for playlist in playlists]
+
+
+@app.put("/playlists/{playlist_id}")
+def update_playlist(playlist_id: int, payload: schemas.PlaylistUpdate, db: Session = Depends(get_db)):
+    playlist = get_playlist_or_404(db, playlist_id)
+    updates = payload.model_dump(exclude_unset=True)
+    if "name" in updates and not updates["name"].strip():
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Playlist name cannot be empty")
+    for field, value in updates.items():
+        setattr(playlist, field, value.strip() if isinstance(value, str) else value)
+    db.commit()
+    db.refresh(playlist)
+    return serialize_playlist(playlist)
 
 
 @app.delete("/playlists/{playlist_id}")
@@ -948,9 +988,16 @@ def add_song_to_playlist(
             detail="Song already exists in this playlist",
         )
 
+    last_position = (
+        db.query(models.PlaylistSong.position)
+        .filter(models.PlaylistSong.playlist_id == playlist_id)
+        .order_by(models.PlaylistSong.position.desc())
+        .first()
+    )
     playlist_song = models.PlaylistSong(
         playlist_id=playlist_id,
         song_id=payload.song_id,
+        position=(last_position[0] + 1 if last_position else 0),
     )
     db.add(playlist_song)
     db.commit()
@@ -962,6 +1009,33 @@ def add_song_to_playlist(
     }
 
 
+@app.delete("/playlists/{playlist_id}/songs/{song_id}")
+def remove_song_from_playlist(playlist_id: int, song_id: int, db: Session = Depends(get_db)):
+    playlist = get_playlist_or_404(db, playlist_id)
+    row = db.query(models.PlaylistSong).filter(
+        models.PlaylistSong.playlist_id == playlist.id,
+        models.PlaylistSong.song_id == song_id,
+    ).first()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Song is not in this playlist")
+    db.delete(row)
+    db.commit()
+    return {"message": "Song removed from playlist", "playlist_id": playlist_id, "song_id": song_id}
+
+
+@app.put("/playlists/{playlist_id}/songs/order")
+def reorder_playlist_songs(playlist_id: int, payload: schemas.PlaylistSongReorder, db: Session = Depends(get_db)):
+    get_playlist_or_404(db, playlist_id)
+    rows = db.query(models.PlaylistSong).filter(models.PlaylistSong.playlist_id == playlist_id).all()
+    row_by_song = {row.song_id: row for row in rows}
+    if set(payload.song_ids) != set(row_by_song) or len(payload.song_ids) != len(row_by_song):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="song_ids must contain every playlist song exactly once")
+    for position, song_id in enumerate(payload.song_ids):
+        row_by_song[song_id].position = position
+    db.commit()
+    return {"message": "Playlist order updated", "playlist_id": playlist_id, "song_ids": payload.song_ids}
+
+
 @app.get("/playlists/{playlist_id}/songs")
 def get_playlist_songs(playlist_id: int, db: Session = Depends(get_db)):
     get_playlist_or_404(db, playlist_id)
@@ -969,6 +1043,7 @@ def get_playlist_songs(playlist_id: int, db: Session = Depends(get_db)):
         db.query(models.PlaylistSong, models.Song)
         .join(models.Song, models.Song.id == models.PlaylistSong.song_id)
         .filter(models.PlaylistSong.playlist_id == playlist_id)
+        .order_by(models.PlaylistSong.position, models.PlaylistSong.id)
         .all()
     )
 
@@ -1042,6 +1117,9 @@ def record_listening_history(
     new_history = models.ListeningHistory(
         user_id=user_id,
         song_id=history.song_id,
+        progress_seconds=max(0, history.progress_seconds),
+        completed=history.completed,
+        skipped=history.skipped,
     )
     db.add(new_history)
     db.commit()
@@ -1065,6 +1143,63 @@ def get_listening_history(user_id: int, db: Session = Depends(get_db)):
         .all()
     )
     return [serialize_model(item) for item in history]
+
+
+@app.put("/users/{user_id}/playback")
+def update_playback_state(user_id: int, payload: schemas.PlaybackStateUpdate, db: Session = Depends(get_db)):
+    get_user_or_404(db, user_id)
+    if payload.position_seconds < 0:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="position_seconds cannot be negative")
+    if payload.song_id is not None:
+        get_song_or_404(db, payload.song_id)
+    state = db.query(models.PlaybackState).filter(models.PlaybackState.user_id == user_id).first()
+    if state is None:
+        state = models.PlaybackState(user_id=user_id)
+        db.add(state)
+    state.song_id = payload.song_id
+    state.position_seconds = payload.position_seconds
+    state.is_playing = payload.is_playing
+    state.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(state)
+    return serialize_model(state)
+
+
+@app.get("/users/{user_id}/playback")
+def get_playback_state(user_id: int, db: Session = Depends(get_db)):
+    get_user_or_404(db, user_id)
+    state = db.query(models.PlaybackState).filter(models.PlaybackState.user_id == user_id).first()
+    return serialize_model(state) if state else {"user_id": user_id, "song_id": None, "position_seconds": 0, "is_playing": False}
+
+
+@app.post("/users/{user_id}/queue")
+def add_to_queue(user_id: int, payload: schemas.QueueSongAdd, db: Session = Depends(get_db)):
+    get_user_or_404(db, user_id)
+    get_song_or_404(db, payload.song_id)
+    last = db.query(models.QueueItem).filter(models.QueueItem.user_id == user_id).order_by(models.QueueItem.position.desc()).first()
+    item = models.QueueItem(user_id=user_id, song_id=payload.song_id, position=(last.position + 1 if last else 0))
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return serialize_model(item)
+
+
+@app.get("/users/{user_id}/queue")
+def get_queue(user_id: int, db: Session = Depends(get_db)):
+    get_user_or_404(db, user_id)
+    rows = db.query(models.QueueItem).filter(models.QueueItem.user_id == user_id).order_by(models.QueueItem.position, models.QueueItem.id).all()
+    return [{"queue_item_id": row.id, "position": row.position, "song": serialize_song(get_song_or_404(db, row.song_id))} for row in rows]
+
+
+@app.delete("/users/{user_id}/queue/{queue_item_id}")
+def remove_from_queue(user_id: int, queue_item_id: int, db: Session = Depends(get_db)):
+    get_user_or_404(db, user_id)
+    item = db.query(models.QueueItem).filter(models.QueueItem.id == queue_item_id, models.QueueItem.user_id == user_id).first()
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Queue item not found")
+    db.delete(item)
+    db.commit()
+    return {"message": "Queue item removed", "queue_item_id": queue_item_id}
 
 
 # Admin endpoints for managing audio URLs
