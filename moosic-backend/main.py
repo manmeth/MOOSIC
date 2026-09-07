@@ -921,6 +921,18 @@ def get_user_playlists(user_id: int, db: Session = Depends(get_db)):
     return [serialize_playlist(playlist) for playlist in playlists]
 
 
+@app.get("/users/{user_id}/playlists/recycle-bin")
+def get_deleted_playlists(user_id: int, db: Session = Depends(get_db)):
+    get_user_or_404(db, user_id)
+    playlists = (
+        db.query(models.Playlist)
+        .filter(models.Playlist.user_id == user_id, models.Playlist.is_deleted.is_(True))
+        .order_by(models.Playlist.deleted_at.desc(), models.Playlist.id.desc())
+        .all()
+    )
+    return [serialize_playlist(playlist) for playlist in playlists]
+
+
 @app.put("/playlists/{playlist_id}")
 def update_playlist(playlist_id: int, payload: schemas.PlaylistUpdate, db: Session = Depends(get_db)):
     playlist = get_playlist_or_404(db, playlist_id)
