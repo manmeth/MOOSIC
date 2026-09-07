@@ -29,6 +29,7 @@ class SongCreate(BaseModel):
     artist_id: int
     album_id: int | None = None
     genre: str | None = None
+    mood: str | None = None
     language: str = "English"
     duration: int | None = None
     audio_url: str | None = None

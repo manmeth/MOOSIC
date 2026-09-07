@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import os
+from urllib.parse import quote_plus
 
 import bcrypt
 import jwt
@@ -105,6 +106,62 @@ def get_playlist_or_404(db: Session, playlist_id: int):
     return playlist
 
 
+def seed_mood_songs():
+    mood_songs = {
+        "Happy": ["Subanallah", "Tum Hi Ho Bandhu", "Uff Teri Adaa", "Dil Dhadakne Do", "Sooraj Ki Baahon Mein"],
+        "Sad": ["Phir Kabhi", "Choo Lo", "Jeena Jeena", "Aaoge Jab Tum", "Barsaat"],
+        "Neutral": ["Mere Bina", "Soch Hai", "Tum Ho Toh", "Kasoor", "Kaisi Hai Ye Rut"],
+    }
+    db = SessionLocal()
+    try:
+        artist = db.query(models.Artist).filter(models.Artist.name == "Moosic Mood Mix").first()
+        if not artist:
+            artist = models.Artist(
+                name="Moosic Mood Mix",
+                image_url="https://images.unsplash.com/photo-1516280440614-37939bbacd81",
+            )
+            db.add(artist)
+            db.flush()
+
+        album = (
+            db.query(models.Album)
+            .filter(models.Album.title == "Mood Collection", models.Album.artist_id == artist.id)
+            .first()
+        )
+        if not album:
+            album = models.Album(
+                title="Mood Collection",
+                artist_id=artist.id,
+                release_date="2026-09-07",
+                cover_url="https://images.unsplash.com/photo-1516280440614-37939bbacd81",
+            )
+            db.add(album)
+            db.flush()
+
+        for mood, titles in mood_songs.items():
+            for title in titles:
+                audio_url = f"https://www.youtube.com/embed?listType=search&list={quote_plus(title + ' Hindi song')}"
+                existing_song = db.query(models.Song).filter(models.Song.title == title).first()
+                if existing_song:
+                    if not existing_song.audio_url:
+                        existing_song.audio_url = audio_url
+                    continue
+                db.add(models.Song(
+                    title=title,
+                    artist_id=artist.id,
+                    album_id=album.id,
+                    genre="Bollywood",
+                    mood=mood,
+                    language="Hindi",
+                    duration=None,
+                    audio_url=audio_url,
+                    cover_url=album.cover_url,
+                ))
+        db.commit()
+    finally:
+        db.close()
+
+
 def seed_demo_music():
     db = SessionLocal()
     try:
@@ -114,6 +171,7 @@ def seed_demo_music():
             # Full catalog already seeded, just backfill any missing language values
             db.query(models.Song).filter(models.Song.language.is_(None)).update({"language": "English"})
             db.commit()
+            seed_mood_songs()
             return
 
         artists = [
@@ -525,6 +583,7 @@ def seed_demo_music():
                         artist_id=artist.id,
                         album_id=album.id,
                         genre=song_data["genre"],
+                        mood=song_data.get("mood"),
                         language=song_data.get("language", "English"),
                         duration=song_data["duration"],
                         audio_url=song_data["audio_url"],
@@ -535,6 +594,7 @@ def seed_demo_music():
         db.commit()
         db.query(models.Song).filter(models.Song.language.is_(None)).update({"language": "English"})
         db.commit()
+        seed_mood_songs()
     finally:
         db.close()
 
@@ -730,6 +790,7 @@ def create_song(song: schemas.SongCreate, db: Session = Depends(get_db)):
         artist_id=song.artist_id,
         album_id=song.album_id,
         genre=song.genre,
+        mood=song.mood,
         language=song.language,
         duration=song.duration,
         audio_url=song.audio_url,

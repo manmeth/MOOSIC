@@ -66,6 +66,12 @@ def ensure_compatibility_columns():
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE playlist_songs ADD COLUMN position INTEGER DEFAULT 0"))
 
+    if "songs" in inspector.get_table_names():
+        columns = [column["name"] for column in inspector.get_columns("songs")]
+        if "mood" not in columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE songs ADD COLUMN mood VARCHAR"))
+
 
 def create_tables():
     Base.metadata.create_all(bind=engine)

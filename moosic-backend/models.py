@@ -51,6 +51,7 @@ class Song(Base):
     album_id = Column(Integer, ForeignKey("albums.id"))
 
     genre = Column(String, nullable=True)
+    mood = Column(String, nullable=True)
     language = Column(String, nullable=False, default="English")
     duration = Column(Integer, nullable=True)
     audio_url = Column(String, nullable=True)
