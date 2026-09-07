@@ -4,7 +4,7 @@ from urllib.parse import quote_plus
 
 import bcrypt
 import jwt
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Query, status, Header
 from sqlalchemy.orm import Session
 
 from database import SessionLocal, create_tables, get_db
@@ -613,12 +613,19 @@ def home():
 
 
 @app.post("/users")
-def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+def create_user(
+    user: schemas.UserCreate,
+    db: Session = Depends(get_db)
+):
     existing_user = (
         db.query(models.User)
-        .filter((models.User.username == user.username) | (models.User.email == user.email))
+        .filter(
+            (models.User.username == user.username)
+            | (models.User.email == user.email)
+        )
         .first()
     )
+
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -626,26 +633,34 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
         )
 
     new_user = models.User(
-        username=user.username,
-        email=user.email,
+        name=user.name.strip(),
+        username=user.username.strip(),
+        email=user.email.lower().strip(),
         password=hash_password(user.password),
+        role="user",
     )
+
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
 
-    token = create_access_token({"sub": str(new_user.id), "username": new_user.username})
+    token = create_access_token({
+        "sub": str(new_user.id),
+        "username": new_user.username,
+        "role": new_user.role,
+    })
 
     return {
         "message": "User created successfully!",
         "user": {
             "user_id": new_user.id,
+            "name": new_user.name,
             "username": new_user.username,
             "email": new_user.email,
+            "role": new_user.role,
         },
         "token": token,
     }
-
 
 @app.get("/users")
 def get_users(db: Session = Depends(get_db)):
@@ -654,22 +669,39 @@ def get_users(db: Session = Depends(get_db)):
 
 
 @app.post("/login")
-def login_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(models.User.username == user.username).first()
-    if not db_user or not verify_password(user.password, db_user.password):
+def login_user(
+    user: schemas.UserLogin,
+    db: Session = Depends(get_db)
+):
+    db_user = (
+        db.query(models.User)
+        .filter(models.User.email == user.email.lower().strip())
+        .first()
+    )
+
+    if not db_user or not verify_password(
+        user.password,
+        db_user.password
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password",
+            detail="Invalid email or password",
         )
 
-    token = create_access_token({"sub": str(db_user.id), "username": db_user.username})
+    token = create_access_token({
+        "sub": str(db_user.id),
+        "username": db_user.username,
+        "role": db_user.role,
+    })
 
     return {
         "message": "Login successful",
         "user": {
             "user_id": db_user.id,
+            "name": db_user.name,
             "username": db_user.username,
             "email": db_user.email,
+            "role": db_user.role,
         },
         "token": token,
     }
@@ -687,7 +719,69 @@ def create_artist(artist: schemas.ArtistCreate, db: Session = Depends(get_db)):
         "artist_id": new_artist.id,
         "name": new_artist.name,
     }
+def get_current_user(
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
 
+    token = authorization.split(" ", 1)[1]
+
+    try:
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM],
+        )
+
+        user_id = payload.get("sub")
+
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+            )
+
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token expired",
+        )
+
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+        )
+
+    user = (
+        db.query(models.User)
+        .filter(models.User.id == int(user_id))
+        .first()
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+
+    return user
+
+
+@app.get("/me")
+def get_me(current_user=Depends(get_current_user)):
+    return {
+        "user_id": current_user.id,
+        "name": current_user.name,
+        "username": current_user.username,
+        "email": current_user.email,
+        "role": current_user.role,
+    }
 
 @app.get("/artists")
 def get_artists(db: Session = Depends(get_db)):
