@@ -76,6 +76,29 @@ def serialize_playlist(playlist):
     return data
 
 
+def rank_songs_by_mood(songs, mood_preferences=None, genre_preferences=None, artist_preferences=None):
+    mood_preferences = mood_preferences or {}
+    genre_preferences = genre_preferences or {}
+    artist_preferences = artist_preferences or {}
+
+    def score(song):
+        song_mood = (song.mood or "Neutral").strip()
+        base_score = mood_preferences.get(song_mood, 0) * 10
+        base_score += genre_preferences.get(song.genre, 0) * 6 if song.genre else 0
+        base_score += artist_preferences.get(song.artist_id, 0) * 4 if song.artist_id is not None else 0
+
+        if song_mood.lower() == "happy":
+            base_score += 3
+        elif song_mood.lower() == "sad":
+            base_score += 1
+        elif song_mood.lower() == "neutral":
+            base_score += 2
+
+        return base_score
+
+    return sorted(songs, key=lambda song: (score(song), song.id), reverse=True)
+
+
 def get_user_or_404(db: Session, user_id: int):
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
@@ -954,6 +977,18 @@ def get_languages(db: Session = Depends(get_db)):
 def get_songs_by_genre(genre_name: str, db: Session = Depends(get_db)):
     songs = db.query(models.Song).filter(models.Song.genre.ilike(genre_name)).all()
     return [serialize_song(song) for song in songs]
+
+
+@app.get("/songs/mood/{mood_name}")
+def get_songs_by_mood(mood_name: str, limit: int = Query(20, ge=1, le=100), db: Session = Depends(get_db)):
+    mood_songs = db.query(models.Song).filter(models.Song.mood.ilike(mood_name)).all()
+    ranked_songs = rank_songs_by_mood(
+        mood_songs,
+        mood_preferences={mood_name.title(): 10},
+        genre_preferences={},
+        artist_preferences={},
+    )
+    return [serialize_song(song) for song in ranked_songs[:limit]]
 
 
 @app.get("/songs/language/{language_name}")
