@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/moodsic/"
+title = "MOOSIC"
+description = "A MOOSIC vinyl-inspired mood music experience where listeners choose how they feel, discover a matching playlist, browse their library, restore deleted playlists, search music, and view their profile."
+version = "1.0.0"
+id = "artifacts/moodsic"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/moodsic/" ]
+localPort = 23935
+
+[services.development]
+run = "pnpm --filter @workspace/moodsic run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/moodsic", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/moodsic/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23935"
+BASE_PATH = "/moodsic/"

@@ -1,0 +1,1 @@
+- [Frontend-only auth](frontend-auth.md) — MOOSIC’s current prototype intentionally keeps sign-in state in localStorage until backend auth is connected.
