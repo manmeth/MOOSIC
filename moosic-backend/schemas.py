@@ -1,16 +1,16 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 
 
 class UserCreate(BaseModel):
+    name: str
     username: str
-    email: str
-    password: str
+    email: EmailStr
+    password: str = Field(min_length=8)
 
 
 class UserLogin(BaseModel):
-    username: str
+    email: EmailStr
     password: str
-
 
 class ArtistCreate(BaseModel):
     name: str
