@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "MOOSIC"
+description = "A vinyl-inspired mood music experience where listeners choose a feeling, pick between an English or Hindi playlist, and settle into a matching listening room."
+version = "1.0.0"
+id = "artifacts/moodsic-app"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21195
+
+[services.development]
+run = "pnpm --filter @workspace/moodsic-app run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/moodsic-app", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/moodsic-app/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21195"
+BASE_PATH = "/"
