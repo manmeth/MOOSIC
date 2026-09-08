@@ -5,6 +5,7 @@ from urllib.parse import quote_plus
 import bcrypt
 import jwt
 from fastapi import Depends, FastAPI, HTTPException, Query, status, Header
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from database import SessionLocal, create_tables, get_db
@@ -24,6 +25,14 @@ app = FastAPI(
     title="Moosic API",
     description="Backend for the Moosic music streaming app",
     version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:8000"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
 
