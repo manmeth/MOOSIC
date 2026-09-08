@@ -28,6 +28,21 @@ SessionLocal = sessionmaker(
 Base = declarative_base()
 
 
+def ensure_user_columns():
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+
+    columns = [column["name"] for column in inspector.get_columns("users")]
+    for column_name, definition in {
+        "name": "VARCHAR",
+        "role": "VARCHAR DEFAULT 'user'",
+    }.items():
+        if column_name not in columns:
+            with engine.begin() as connection:
+                connection.execute(text(f"ALTER TABLE users ADD COLUMN {column_name} {definition}"))
+
+
 def ensure_song_language_column():
     inspector = inspect(engine)
     if "songs" not in inspector.get_table_names():
@@ -41,6 +56,15 @@ def ensure_song_language_column():
 
 def ensure_compatibility_columns():
     inspector = inspect(engine)
+    if "users" in inspector.get_table_names():
+        columns = [column["name"] for column in inspector.get_columns("users")]
+        if "name" not in columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE users ADD COLUMN name VARCHAR"))
+        if "role" not in columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR DEFAULT 'user'"))
+
     if "playlists" in inspector.get_table_names():
         columns = [column["name"] for column in inspector.get_columns("playlists")]
         if "description" not in columns:
@@ -75,6 +99,7 @@ def ensure_compatibility_columns():
 
 def create_tables():
     Base.metadata.create_all(bind=engine)
+    ensure_user_columns()
     ensure_song_language_column()
     ensure_compatibility_columns()
 

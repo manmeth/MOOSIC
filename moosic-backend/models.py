@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -7,6 +7,10 @@ from database import Base
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        Index("ix_users_username", "username"),
+        Index("ix_users_email", "email"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
 
@@ -55,6 +59,12 @@ class Album(Base):
 
 class Song(Base):
     __tablename__ = "songs"
+    __table_args__ = (
+        Index("ix_songs_artist_id", "artist_id"),
+        Index("ix_songs_genre", "genre"),
+        Index("ix_songs_mood", "mood"),
+        Index("ix_songs_language", "language"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
@@ -75,6 +85,9 @@ class Song(Base):
 
 class Playlist(Base):
     __tablename__ = "playlists"
+    __table_args__ = (
+        Index("ix_playlists_user_deleted", "user_id", "is_deleted"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
@@ -93,7 +106,10 @@ class Playlist(Base):
 
 class LikedSong(Base):
     __tablename__ = "liked_songs"
-    __table_args__ = (UniqueConstraint("user_id", "song_id", name="uq_liked_song"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "song_id", name="uq_liked_song"),
+        Index("ix_liked_songs_user_song", "user_id", "song_id"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
@@ -102,6 +118,9 @@ class LikedSong(Base):
 
 class ListeningHistory(Base):
     __tablename__ = "listening_history"
+    __table_args__ = (
+        Index("ix_listening_history_user_played", "user_id", "played_at"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
@@ -126,6 +145,9 @@ class PlaybackState(Base):
 
 class QueueItem(Base):
     __tablename__ = "queue_items"
+    __table_args__ = (
+        Index("ix_queue_items_user_position", "user_id", "position"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -135,7 +157,11 @@ class QueueItem(Base):
 
 class PlaylistSong(Base):
     __tablename__ = "playlist_songs"
-    __table_args__ = (UniqueConstraint("playlist_id", "song_id", name="uq_playlist_song"),)
+    __table_args__ = (
+        UniqueConstraint("playlist_id", "song_id", name="uq_playlist_song"),
+        Index("ix_playlist_songs_playlist_position", "playlist_id", "position"),
+        Index("ix_playlist_songs_playlist_song", "playlist_id", "song_id"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
 

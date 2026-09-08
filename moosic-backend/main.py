@@ -1129,8 +1129,10 @@ def update_playlist(playlist_id: int, payload: schemas.PlaylistUpdate, db: Sessi
     updates = payload.model_dump(exclude_unset=True)
     if "name" in updates and not updates["name"].strip():
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Playlist name cannot be empty")
+
     for field, value in updates.items():
         setattr(playlist, field, value.strip() if isinstance(value, str) else value)
+
     db.commit()
     db.refresh(playlist)
     return serialize_playlist(playlist)
@@ -1232,8 +1234,10 @@ def reorder_playlist_songs(playlist_id: int, payload: schemas.PlaylistSongReorde
     row_by_song = {row.song_id: row for row in rows}
     if set(payload.song_ids) != set(row_by_song) or len(payload.song_ids) != len(row_by_song):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="song_ids must contain every playlist song exactly once")
+
     for position, song_id in enumerate(payload.song_ids):
         row_by_song[song_id].position = position
+
     db.commit()
     return {"message": "Playlist order updated", "playlist_id": playlist_id, "song_ids": payload.song_ids}
 
