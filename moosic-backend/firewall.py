@@ -11,9 +11,10 @@ from starlette.responses import JSONResponse
 
 # Set up security logging
 logging.basicConfig(
-    filename="security.log",
+     filename="security.log",
     level=logging.WARNING,
-    format="%(asctime)s - %(levelname)s - %(message)s"
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    filemode="a"
 )
 
 # Store request times for each IP
