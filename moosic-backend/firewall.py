@@ -28,8 +28,14 @@ TIME_WINDOW = 60  # seconds
 SUSPICIOUS_PATTERNS = [
     r"(?i)(union\s+select)",
     r"(?i)(drop\s+table)",
+    r"(?i)(delete\s+from)",
+    r"(?i)(insert\s+into)",
+    r"(?i)(update\s+\w+\s+set)",
     r"(?i)(or\s+1\s*=\s*1)",
+    r"(?i)(and\s+1\s*=\s*1)",
     r"(?i)(<script)",
+    r"(?i)(javascript:)",
+    r"(?i)(onerror\s*=)",
 ]
 
 
