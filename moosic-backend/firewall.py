@@ -39,6 +39,23 @@ class FirewallMiddleware(BaseHTTPMiddleware):
 
         # Get user's IP address
         client_ip = request.client.host if request.client else "unknown"
+                # Block access to sensitive or internal paths
+        PROTECTED_PATHS = {
+            "/admin",
+            "/docs",
+            "/redoc",
+            "/openapi.json"
+        }
+
+        if request.url.path in PROTECTED_PATHS:
+            logging.warning(
+                f"Blocked IP {client_ip}: Protected path access attempted"
+            )
+
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Access to this path is restricted."}
+            )
                 # Allow only approved HTTP methods
         ALLOWED_METHODS = {"GET", "POST", "PUT", "DELETE"}
 
