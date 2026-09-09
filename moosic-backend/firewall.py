@@ -39,7 +39,33 @@ class FirewallMiddleware(BaseHTTPMiddleware):
 
         # Get user's IP address
         client_ip = request.client.host if request.client else "unknown"
+                # Allow only approved HTTP methods
+        ALLOWED_METHODS = {"GET", "POST", "PUT", "DELETE"}
 
+        if request.method not in ALLOWED_METHODS:
+            logging.warning(
+                f"Blocked IP {client_ip}: Disallowed HTTP method {request.method}"
+            )
+
+            return JSONResponse(
+                status_code=405,
+                content={"detail": "HTTP method not allowed."}
+            )
+
+                # Limit request body size
+        MAX_BODY_SIZE = 1_000_000  # 1 MB
+
+        content_length = request.headers.get("content-length")
+
+        if content_length and int(content_length) > MAX_BODY_SIZE:
+            logging.warning(
+                f"Blocked IP {client_ip}: Request body too large"
+            )
+
+            return JSONResponse(
+                status_code=413,
+                content={"detail": "Request too large."}
+            )
         current_time = time.time()
 
         # Remove old requests
