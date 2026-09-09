@@ -101,7 +101,12 @@ class FirewallMiddleware(BaseHTTPMiddleware):
                     content={"detail": "Suspicious request blocked."}
                 )
 
-        # Allow normal request to continue
-        response = await call_next(request)
+       # Allow normal request to continue
+response = await call_next(request)
 
-        return response
+# Add security headers
+response.headers["X-Content-Type-Options"] = "nosniff"
+response.headers["X-Frame-Options"] = "DENY"
+response.headers["X-XSS-Protection"] = "1; mode=block"
+
+return response
