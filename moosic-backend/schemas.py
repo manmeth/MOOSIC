@@ -8,6 +8,14 @@ class UserCreate(BaseModel):
     password: str = Field(min_length=8)
 
 
+class ManagerRegistration(BaseModel):
+    name: str
+    username: str
+    email: EmailStr
+    password: str = Field(min_length=8)
+    registration_code: str
+
+
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
