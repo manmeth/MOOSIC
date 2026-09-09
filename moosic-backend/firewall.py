@@ -106,6 +106,18 @@ class FirewallMiddleware(BaseHTTPMiddleware):
 
         # Check URL for suspicious patterns
         request_url = unquote(str(request.url))
+                # Limit the length of the request URL
+        MAX_URL_LENGTH = 2048
+
+        if len(request_url) > MAX_URL_LENGTH:
+            logging.warning(
+                f"Blocked IP {client_ip}: Request URL too long"
+            )
+
+            return JSONResponse(
+                status_code=414,
+                content={"detail": "Request URL too long."}
+            )
 
         for pattern in SUSPICIOUS_PATTERNS:
             if re.search(pattern, request_url):
