@@ -6,6 +6,7 @@ import bcrypt
 import jwt
 from fastapi import Depends, FastAPI, HTTPException, Query, status, Header
 from fastapi.middleware.cors import CORSMiddleware
+from firewall import FirewallMiddleware
 from sqlalchemy.orm import Session
 
 from database import SessionLocal, create_tables, get_db
@@ -28,6 +29,7 @@ app = FastAPI(
     description="Backend for the Moosic music streaming app",
     version="1.0.0",
 )
+app.add_middleware(FirewallMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
