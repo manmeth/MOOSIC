@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -23,6 +23,7 @@ class User(Base):
     password = Column(String, nullable=False)
 
     role = Column(String, nullable=False, default="user")
+    is_premium = Column(Boolean, nullable=False, default=False)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -31,6 +32,21 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan"
     )
+    payments = relationship("Payment", back_populates="user")
+
+
+class Payment(Base):
+    __tablename__ = "payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    plan = Column(String, nullable=False)
+    amount = Column(Float, nullable=False)
+    currency = Column(String, nullable=False)
+    status = Column(String, nullable=False)
+    payment_date = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="payments")
 
 
 class Artist(Base):

@@ -841,6 +841,94 @@ def get_me(current_user=Depends(get_current_user)):
         "role": current_user.role,
     }
 
+
+@app.get("/premium/status", response_model=schemas.PremiumStatusResponse)
+def get_premium_status(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.is_premium:
+        latest_successful_payment = (
+            db.query(models.Payment)
+            .filter(
+                models.Payment.user_id == current_user.id,
+                models.Payment.status == "success",
+            )
+            .order_by(models.Payment.payment_date.desc())
+            .first()
+        )
+        return {
+            "is_premium": True,
+            "plan": latest_successful_payment.plan if latest_successful_payment else None,
+            "status": "active",
+        }
+
+    return {
+        "is_premium": False,
+        "plan": None,
+        "status": "free",
+    }
+
+
+@app.post("/premium/subscribe")
+def subscribe_to_premium(
+    request: schemas.PremiumSubscribeRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    allowed_plan = "premium"
+    if request.plan.lower() != allowed_plan:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid plan. Only 'premium' is supported.",
+        )
+
+    valid_test_methods = {"test_success", "test_failure"}
+    if request.payment_method not in valid_test_methods:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid payment_method. Use 'test_success' or 'test_failure'.",
+        )
+
+    payment_status = "success" if request.payment_method == "test_success" else "failed"
+    if payment_status == "success":
+        current_user.is_premium = True
+
+    payment = models.Payment(
+        user_id=current_user.id,
+        plan=request.plan.lower(),
+        amount=9.99,
+        currency="EUR",
+        status=payment_status,
+        payment_date=datetime.utcnow(),
+    )
+    db.add(payment)
+    db.commit()
+    db.refresh(current_user)
+
+    response = {
+        "message": "Premium payment processed successfully." if payment_status == "success" else "Premium payment failed; account remains free.",
+        "payment_status": payment_status,
+        "is_premium": current_user.is_premium,
+        "plan": request.plan.lower(),
+        "status": "active" if current_user.is_premium else "free",
+    }
+    return response
+
+
+@app.post("/premium/cancel", response_model=schemas.PremiumCancelResponse)
+def cancel_premium(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    current_user.is_premium = False
+    db.commit()
+    return {
+        "message": "Premium subscription cancelled successfully. Your account is now free.",
+        "is_premium": False,
+    }
+
+
 @app.get("/artists")
 def get_artists(db: Session = Depends(get_db)):
     # DATABASE OPTIMIZATION: Use eager loading to avoid N+1 queries
