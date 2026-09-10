@@ -104,7 +104,6 @@ A safe local network failure simulation was performed to test service availabili
 
 The test confirmed that an unavailable service could be detected and that the backend was reachable again through its configured port.
 
-
 ## Evidence
 
 The following were verified during testing:
@@ -114,6 +113,26 @@ The following were verified during testing:
 - Suspicious requests were blocked.
 - Security events were recorded in the log file.
 - The firewall was successfully integrated with the FastAPI backend.
+
+### T031 – Security Verification & Evidence Collection
+
+The implemented firewall security mechanisms were verified using the local FastAPI backend.
+
+* **Backend Reachability:** HTTP 200 — PASS
+
+<img width="515" height="376" alt="image" src="https://github.com/user-attachments/assets/f481b6cb-c02b-4bca-8da1-e87f2ad7a043" />
+<img width="519" height="145" alt="image" src="https://github.com/user-attachments/assets/22196b00-3324-4a74-862f-cd72ae49467f" />
+
+* **Rate Limiting:** HTTP 429 after exceeding the request limit — PASS
+
+<img width="512" height="76" alt="image" src="https://github.com/user-attachments/assets/026d7ca3-a305-439e-a738-7c95344ff2af" />
+
+
+* **Suspicious Request Detection:** HTTP 403 for a blocked suspicious request — PASS
+
+<img width="526" height="66" alt="image" src="https://github.com/user-attachments/assets/885d8126-ba75-4826-9d90-78a46cedbf9f" />
+
+**Overall Result: PASS**
 
 ## Files
 
