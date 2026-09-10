@@ -86,6 +86,25 @@ Suspicious request blocked.
 
 The blocked request was also recorded in security.log.
 
+### Network Failure & Recovery
+
+A safe local network failure simulation was performed to test service availability and recovery.
+
+* **Failure Test:** Port 8001 was tested when no service was running on the port.
+* **Result:** `TcpTestSucceeded : False` — PASS
+* **Recovery Test:** The FastAPI backend was tested on port 8000 after recovery.
+* **Result:** `TcpTestSucceeded : True` — PASS
+
+**Figure: Network Failure & Recovery Test Evidence**
+
+<img width="463" height="382" alt="image" src="https://github.com/user-attachments/assets/4044d321-da52-478b-8dd9-209cf2f97d88" />
+
+
+**Overall Result: PASS**
+
+The test confirmed that an unavailable service could be detected and that the backend was reachable again through its configured port.
+
+
 ## Evidence
 
 The following were verified during testing:
