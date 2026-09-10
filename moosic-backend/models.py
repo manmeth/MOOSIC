@@ -46,6 +46,9 @@ class Artist(Base):
 
 class Album(Base):
     __tablename__ = "albums"
+    __table_args__ = (
+        Index("ix_albums_artist_id", "artist_id"),  # DATABASE OPTIMIZATION: Index for artist lookups
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, nullable=False)
@@ -61,6 +64,7 @@ class Song(Base):
     __tablename__ = "songs"
     __table_args__ = (
         Index("ix_songs_artist_id", "artist_id"),
+        Index("ix_songs_album_id", "album_id"),  # DATABASE OPTIMIZATION: Index for album lookups
         Index("ix_songs_genre", "genre"),
         Index("ix_songs_mood", "mood"),
         Index("ix_songs_language", "language"),
@@ -109,6 +113,7 @@ class LikedSong(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "song_id", name="uq_liked_song"),
         Index("ix_liked_songs_user_song", "user_id", "song_id"),
+        Index("ix_liked_songs_song_id", "song_id"),  # DATABASE OPTIMIZATION: Reverse index for song queries
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -120,6 +125,8 @@ class ListeningHistory(Base):
     __tablename__ = "listening_history"
     __table_args__ = (
         Index("ix_listening_history_user_played", "user_id", "played_at"),
+        Index("ix_listening_history_song_id", "song_id"),  # DATABASE OPTIMIZATION: Index for song lookups
+        Index("ix_listening_history_completed", "user_id", "completed"),  # DATABASE OPTIMIZATION: For completed query
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -133,7 +140,10 @@ class ListeningHistory(Base):
 
 class PlaybackState(Base):
     __tablename__ = "playback_states"
-    __table_args__ = (UniqueConstraint("user_id", name="uq_playback_user"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_playback_user"),
+        Index("ix_playback_states_song_id", "song_id"),  # DATABASE OPTIMIZATION: Index for song lookups
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -147,6 +157,7 @@ class QueueItem(Base):
     __tablename__ = "queue_items"
     __table_args__ = (
         Index("ix_queue_items_user_position", "user_id", "position"),
+        Index("ix_queue_items_song_id", "song_id"),  # DATABASE OPTIMIZATION: Index for song lookups
     )
 
     id = Column(Integer, primary_key=True, index=True)

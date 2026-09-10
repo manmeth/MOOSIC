@@ -2,13 +2,20 @@ from pathlib import Path
 
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 DATABASE_PATH = Path(__file__).resolve().parent / "moosic.db"
 DATABASE_URL = f"sqlite:///{DATABASE_PATH.as_posix()}"
 
+# DATABASE OPTIMIZATION: Connection pooling and pooling configuration
+# For SQLite, we use StaticPool to ensure connection reuse
+# Pre-ping connections to detect stale connections early
 engine = create_engine(
     DATABASE_URL,
     connect_args={"check_same_thread": False},
+    poolclass=StaticPool,  # Reuse single connection for SQLite
+    pool_pre_ping=True,  # Verify connections before using them
+    echo=False,  # Set to True for SQL debugging
 )
 
 
@@ -23,9 +30,38 @@ SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
     bind=engine,
+    expire_on_commit=False,  # Reduce unnecessary queries after commit
 )
 
 Base = declarative_base()
+
+
+# DATABASE OPTIMIZATION: Transaction management utilities
+class TransactionManager:
+    """Utility class for managing database transactions safely."""
+    
+    @staticmethod
+    def commit_with_rollback(session, action_func):
+        """Execute action with automatic rollback on error."""
+        try:
+            result = action_func(session)
+            session.commit()
+            return result
+        except Exception as e:
+            session.rollback()
+            raise e
+    
+    @staticmethod
+    def batch_commit(session, operations):
+        """Execute multiple operations in a single transaction."""
+        try:
+            for operation in operations:
+                operation(session)
+            session.commit()
+            return True
+        except Exception as e:
+            session.rollback()
+            raise e
 
 
 def ensure_user_columns():
@@ -105,8 +141,16 @@ def create_tables():
 
 
 def get_db():
+    """DATABASE OPTIMIZATION: Session factory with proper cleanup.
+    
+    Ensures connections are properly closed and transactions are rolled back
+    if not explicitly committed.
+    """
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()

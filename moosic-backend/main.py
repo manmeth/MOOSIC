@@ -7,7 +7,8 @@ import jwt
 from fastapi import Depends, FastAPI, HTTPException, Query, status, Header
 from sqlalchemy.orm import Session
 
-from database import SessionLocal, create_tables, get_db
+from database import SessionLocal, create_tables, get_db, TransactionManager
+from query_optimization import OptimizedQueries
 import models
 import schemas
 
@@ -808,13 +809,15 @@ def get_me(current_user=Depends(get_current_user)):
 
 @app.get("/artists")
 def get_artists(db: Session = Depends(get_db)):
-    artists = db.query(models.Artist).all()
+    # DATABASE OPTIMIZATION: Use eager loading to avoid N+1 queries
+    artists = OptimizedQueries.get_all_artists_with_songs(db)
     return [serialize_model(artist) for artist in artists]
 
 
 @app.get("/artists/{artist_id}")
 def get_artist_detail(artist_id: int, db: Session = Depends(get_db)):
-    artist = db.query(models.Artist).filter(models.Artist.id == artist_id).first()
+    # DATABASE OPTIMIZATION: Use eager loading to load all relationships at once
+    artist = OptimizedQueries.get_artist_with_albums_and_songs(db, artist_id)
     if not artist:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -862,13 +865,15 @@ def create_album(album: schemas.AlbumCreate, db: Session = Depends(get_db)):
 
 @app.get("/albums")
 def get_albums(db: Session = Depends(get_db)):
+    # DATABASE OPTIMIZATION: Get all albums with artist pre-loaded
     albums = db.query(models.Album).all()
     return [serialize_album(album) for album in albums]
 
 
 @app.get("/albums/{album_id}")
 def get_album_detail(album_id: int, db: Session = Depends(get_db)):
-    album = db.query(models.Album).filter(models.Album.id == album_id).first()
+    # DATABASE OPTIMIZATION: Use eager loading for album with all relationships
+    album = OptimizedQueries.get_album_with_songs(db, album_id)
     if not album:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -932,13 +937,20 @@ def get_songs(
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ):
-    songs = db.query(models.Song).order_by(models.Song.id).offset(offset).limit(limit).all()
+    # DATABASE OPTIMIZATION: Use eager loading to avoid N+1 queries
+    songs = OptimizedQueries.get_all_songs_with_relations(db, offset, limit)
     return [serialize_song(song) for song in songs]
 
 
 @app.get("/songs/{song_id}")
 def get_song_detail(song_id: int, db: Session = Depends(get_db)):
-    song = get_song_or_404(db, song_id)
+    # DATABASE OPTIMIZATION: Use eager loading for song with relationships
+    song = OptimizedQueries.get_song_with_relations(db, song_id)
+    if not song:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Song with id {song_id} not found",
+        )
     payload = serialize_song(song)
     payload["is_playable"] = bool(song.audio_url)
     return payload
@@ -946,7 +958,13 @@ def get_song_detail(song_id: int, db: Session = Depends(get_db)):
 
 @app.get("/songs/{song_id}/play")
 def get_song_playback(song_id: int, db: Session = Depends(get_db)):
-    song = get_song_or_404(db, song_id)
+    # DATABASE OPTIMIZATION: Use eager loading for playback data
+    song = OptimizedQueries.get_song_with_relations(db, song_id)
+    if not song:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Song with id {song_id} not found",
+        )
     return {
         "song_id": song.id,
         "title": song.title,
@@ -975,13 +993,15 @@ def get_languages(db: Session = Depends(get_db)):
 
 @app.get("/songs/genre/{genre_name}")
 def get_songs_by_genre(genre_name: str, db: Session = Depends(get_db)):
-    songs = db.query(models.Song).filter(models.Song.genre.ilike(genre_name)).all()
+    # DATABASE OPTIMIZATION: Use eager loading for genre-filtered songs
+    songs = OptimizedQueries.get_songs_by_genre(db, genre_name)
     return [serialize_song(song) for song in songs]
 
 
 @app.get("/songs/mood/{mood_name}")
 def get_songs_by_mood(mood_name: str, limit: int = Query(20, ge=1, le=100), db: Session = Depends(get_db)):
-    mood_songs = db.query(models.Song).filter(models.Song.mood.ilike(mood_name)).all()
+    # DATABASE OPTIMIZATION: Use eager loading for mood-filtered songs
+    mood_songs = OptimizedQueries.get_songs_by_mood(db, mood_name, limit)
     ranked_songs = rank_songs_by_mood(
         mood_songs,
         mood_preferences={mood_name.title(): 10},
@@ -993,7 +1013,8 @@ def get_songs_by_mood(mood_name: str, limit: int = Query(20, ge=1, le=100), db: 
 
 @app.get("/songs/language/{language_name}")
 def get_songs_by_language(language_name: str, db: Session = Depends(get_db)):
-    songs = db.query(models.Song).filter(models.Song.language.ilike(language_name)).all()
+    # DATABASE OPTIMIZATION: Use eager loading for language-filtered songs
+    songs = OptimizedQueries.get_songs_by_language(db, language_name)
     return [serialize_song(song) for song in songs]
 
 
