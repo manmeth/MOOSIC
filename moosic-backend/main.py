@@ -5,6 +5,8 @@ from urllib.parse import quote_plus
 import bcrypt
 import jwt
 from fastapi import Depends, FastAPI, HTTPException, Query, status, Header
+from fastapi.middleware.cors import CORSMiddleware
+from firewall import FirewallMiddleware
 from sqlalchemy.orm import Session
 
 from database import SessionLocal, create_tables, get_db, TransactionManager
@@ -16,6 +18,8 @@ import schemas
 SECRET_KEY = os.getenv("MOOSIC_SECRET_KEY", "moosic-development-secret-change-me")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
+MANAGER_ROLE = "manager"
+MANAGER_REGISTRATION_CODE = os.getenv("MOOSIC_MANAGER_REGISTRATION_CODE", "manager-access-code")
 
 
 create_tables()
@@ -25,6 +29,15 @@ app = FastAPI(
     title="Moosic API",
     description="Backend for the Moosic music streaming app",
     version="1.0.0",
+)
+app.add_middleware(FirewallMiddleware)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:8000"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
 
@@ -797,6 +810,27 @@ def get_current_user(
     return user
 
 
+def require_role(required_role: str):
+    def role_checker(current_user: models.User = Depends(get_current_user)):
+        if current_user.role != required_role:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Requires {required_role} role",
+            )
+        return current_user
+
+    return role_checker
+
+
+def require_self_or_403(user_id: int, current_user: models.User = Depends(get_current_user)):
+    if current_user.id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: you can only access your own resources",
+        )
+    return current_user
+
+
 @app.get("/me")
 def get_me(current_user=Depends(get_current_user)):
     return {
@@ -1053,8 +1087,75 @@ def search_songs(q: str, limit: int = Query(10, ge=1, le=100), db: Session = Dep
     return [serialize_song(song) for song in songs]
 
 
+@app.post("/manager/register")
+def register_manager(user: schemas.ManagerRegistration, db: Session = Depends(get_db)):
+    if user.registration_code != MANAGER_REGISTRATION_CODE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid manager registration code",
+        )
+
+    existing_user = (
+        db.query(models.User)
+        .filter(
+            (models.User.username == user.username)
+            | (models.User.email == user.email)
+        )
+        .first()
+    )
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User with this username or email already exists",
+        )
+
+    new_user = models.User(
+        name=user.name.strip(),
+        username=user.username.strip(),
+        email=user.email.lower().strip(),
+        password=hash_password(user.password),
+        role=MANAGER_ROLE,
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    token = create_access_token({
+        "sub": str(new_user.id),
+        "username": new_user.username,
+        "role": new_user.role,
+    })
+
+    return {
+        "message": "Manager created successfully",
+        "user": {
+            "user_id": new_user.id,
+            "name": new_user.name,
+            "username": new_user.username,
+            "email": new_user.email,
+            "role": new_user.role,
+        },
+        "token": token,
+    }
+
+
+@app.get("/manager-only")
+def manager_only(current_user: models.User = Depends(require_role(MANAGER_ROLE))):
+    return {
+        "message": "Manager access granted",
+        "user_id": current_user.id,
+        "role": current_user.role,
+    }
+
+
 @app.get("/users/{user_id}/recommendations")
-def get_recommendations(user_id: int, db: Session = Depends(get_db)):
+def get_recommendations(
+    user_id: int,
+    current_user: models.User = Depends(require_self_or_403),
+    db: Session = Depends(get_db),
+):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only access your own resources")
     get_user_or_404(db, user_id)
 
     liked_songs = (
@@ -1099,7 +1200,14 @@ def get_recommendations(user_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/users/{user_id}/playlists")
-def create_playlist(user_id: int, playlist: schemas.PlaylistCreate, db: Session = Depends(get_db)):
+def create_playlist(
+    user_id: int,
+    playlist: schemas.PlaylistCreate,
+    current_user: models.User = Depends(require_self_or_403),
+    db: Session = Depends(get_db),
+):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only access your own resources")
     get_user_or_404(db, user_id)
 
     new_playlist = models.Playlist(
@@ -1121,7 +1229,13 @@ def create_playlist(user_id: int, playlist: schemas.PlaylistCreate, db: Session 
 
 
 @app.get("/users/{user_id}/playlists")
-def get_user_playlists(user_id: int, db: Session = Depends(get_db)):
+def get_user_playlists(
+    user_id: int,
+    current_user: models.User = Depends(require_self_or_403),
+    db: Session = Depends(get_db),
+):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only access your own resources")
     get_user_or_404(db, user_id)
     playlists = (
         db.query(models.Playlist)
@@ -1133,7 +1247,13 @@ def get_user_playlists(user_id: int, db: Session = Depends(get_db)):
 
 
 @app.get("/users/{user_id}/playlists/recycle-bin")
-def get_deleted_playlists(user_id: int, db: Session = Depends(get_db)):
+def get_deleted_playlists(
+    user_id: int,
+    current_user: models.User = Depends(require_self_or_403),
+    db: Session = Depends(get_db),
+):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only access your own resources")
     get_user_or_404(db, user_id)
     playlists = (
         db.query(models.Playlist)
@@ -1145,8 +1265,15 @@ def get_deleted_playlists(user_id: int, db: Session = Depends(get_db)):
 
 
 @app.put("/playlists/{playlist_id}")
-def update_playlist(playlist_id: int, payload: schemas.PlaylistUpdate, db: Session = Depends(get_db)):
+def update_playlist(
+    playlist_id: int,
+    payload: schemas.PlaylistUpdate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     playlist = get_playlist_or_404(db, playlist_id)
+    if playlist.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only modify your own playlists")
     updates = payload.model_dump(exclude_unset=True)
     if "name" in updates and not updates["name"].strip():
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Playlist name cannot be empty")
@@ -1160,8 +1287,14 @@ def update_playlist(playlist_id: int, payload: schemas.PlaylistUpdate, db: Sessi
 
 
 @app.delete("/playlists/{playlist_id}")
-def delete_playlist(playlist_id: int, db: Session = Depends(get_db)):
+def delete_playlist(
+    playlist_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     playlist = get_playlist_or_404(db, playlist_id)
+    if playlist.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only delete your own playlists")
     if playlist.is_deleted:
         return {"message": "Playlist already deleted", "playlist_id": playlist_id}
 
@@ -1173,8 +1306,14 @@ def delete_playlist(playlist_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/playlists/{playlist_id}/restore")
-def restore_playlist(playlist_id: int, db: Session = Depends(get_db)):
+def restore_playlist(
+    playlist_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     playlist = get_playlist_or_404(db, playlist_id)
+    if playlist.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only restore your own playlists")
     if not playlist.is_deleted:
         return {"message": "Playlist is not deleted", "playlist_id": playlist_id}
 
@@ -1189,9 +1328,12 @@ def restore_playlist(playlist_id: int, db: Session = Depends(get_db)):
 def add_song_to_playlist(
     playlist_id: int,
     payload: schemas.PlaylistSongAdd,
+    current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     playlist = get_playlist_or_404(db, playlist_id)
+    if playlist.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only modify your own playlists")
     if payload.user_id is not None:
         get_user_or_404(db, payload.user_id)
         if playlist.user_id != payload.user_id:
@@ -1235,8 +1377,15 @@ def add_song_to_playlist(
 
 
 @app.delete("/playlists/{playlist_id}/songs/{song_id}")
-def remove_song_from_playlist(playlist_id: int, song_id: int, db: Session = Depends(get_db)):
+def remove_song_from_playlist(
+    playlist_id: int,
+    song_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     playlist = get_playlist_or_404(db, playlist_id)
+    if playlist.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only modify your own playlists")
     row = db.query(models.PlaylistSong).filter(
         models.PlaylistSong.playlist_id == playlist.id,
         models.PlaylistSong.song_id == song_id,
@@ -1249,8 +1398,15 @@ def remove_song_from_playlist(playlist_id: int, song_id: int, db: Session = Depe
 
 
 @app.put("/playlists/{playlist_id}/songs/order")
-def reorder_playlist_songs(playlist_id: int, payload: schemas.PlaylistSongReorder, db: Session = Depends(get_db)):
-    get_playlist_or_404(db, playlist_id)
+def reorder_playlist_songs(
+    playlist_id: int,
+    payload: schemas.PlaylistSongReorder,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    playlist = get_playlist_or_404(db, playlist_id)
+    if playlist.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only modify your own playlists")
     rows = db.query(models.PlaylistSong).filter(models.PlaylistSong.playlist_id == playlist_id).all()
     row_by_song = {row.song_id: row for row in rows}
     if set(payload.song_ids) != set(row_by_song) or len(payload.song_ids) != len(row_by_song):
@@ -1264,8 +1420,14 @@ def reorder_playlist_songs(playlist_id: int, payload: schemas.PlaylistSongReorde
 
 
 @app.get("/playlists/{playlist_id}/songs")
-def get_playlist_songs(playlist_id: int, db: Session = Depends(get_db)):
-    get_playlist_or_404(db, playlist_id)
+def get_playlist_songs(
+    playlist_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    playlist = get_playlist_or_404(db, playlist_id)
+    if playlist.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only access your own playlists")
     rows = (
         db.query(models.PlaylistSong, models.Song)
         .join(models.Song, models.Song.id == models.PlaylistSong.song_id)
@@ -1285,7 +1447,14 @@ def get_playlist_songs(playlist_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/users/{user_id}/liked-songs")
-def like_song(user_id: int, payload: schemas.LikeSongCreate, db: Session = Depends(get_db)):
+def like_song(
+    user_id: int,
+    payload: schemas.LikeSongCreate,
+    current_user: models.User = Depends(require_self_or_403),
+    db: Session = Depends(get_db),
+):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only access your own resources")
     get_user_or_404(db, user_id)
     get_song_or_404(db, payload.song_id)
 
@@ -1313,7 +1482,13 @@ def like_song(user_id: int, payload: schemas.LikeSongCreate, db: Session = Depen
 
 
 @app.get("/users/{user_id}/liked-songs")
-def get_liked_songs(user_id: int, db: Session = Depends(get_db)):
+def get_liked_songs(
+    user_id: int,
+    current_user: models.User = Depends(require_self_or_403),
+    db: Session = Depends(get_db),
+):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only access your own resources")
     get_user_or_404(db, user_id)
     rows = (
         db.query(models.LikedSong, models.Song)
@@ -1336,8 +1511,11 @@ def get_liked_songs(user_id: int, db: Session = Depends(get_db)):
 def record_listening_history(
     user_id: int,
     history: schemas.ListeningHistoryCreate,
+    current_user: models.User = Depends(require_self_or_403),
     db: Session = Depends(get_db),
 ):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only access your own resources")
     get_user_or_404(db, user_id)
     get_song_or_404(db, history.song_id)
 
@@ -1361,7 +1539,13 @@ def record_listening_history(
 
 
 @app.get("/users/{user_id}/listening-history")
-def get_listening_history(user_id: int, db: Session = Depends(get_db)):
+def get_listening_history(
+    user_id: int,
+    current_user: models.User = Depends(require_self_or_403),
+    db: Session = Depends(get_db),
+):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only access your own resources")
     get_user_or_404(db, user_id)
     history = (
         db.query(models.ListeningHistory)
@@ -1373,7 +1557,14 @@ def get_listening_history(user_id: int, db: Session = Depends(get_db)):
 
 
 @app.put("/users/{user_id}/playback")
-def update_playback_state(user_id: int, payload: schemas.PlaybackStateUpdate, db: Session = Depends(get_db)):
+def update_playback_state(
+    user_id: int,
+    payload: schemas.PlaybackStateUpdate,
+    current_user: models.User = Depends(require_self_or_403),
+    db: Session = Depends(get_db),
+):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only access your own resources")
     get_user_or_404(db, user_id)
     if payload.position_seconds < 0:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="position_seconds cannot be negative")
@@ -1393,14 +1584,27 @@ def update_playback_state(user_id: int, payload: schemas.PlaybackStateUpdate, db
 
 
 @app.get("/users/{user_id}/playback")
-def get_playback_state(user_id: int, db: Session = Depends(get_db)):
+def get_playback_state(
+    user_id: int,
+    current_user: models.User = Depends(require_self_or_403),
+    db: Session = Depends(get_db),
+):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only access your own resources")
     get_user_or_404(db, user_id)
     state = db.query(models.PlaybackState).filter(models.PlaybackState.user_id == user_id).first()
     return serialize_model(state) if state else {"user_id": user_id, "song_id": None, "position_seconds": 0, "is_playing": False}
 
 
 @app.post("/users/{user_id}/queue")
-def add_to_queue(user_id: int, payload: schemas.QueueSongAdd, db: Session = Depends(get_db)):
+def add_to_queue(
+    user_id: int,
+    payload: schemas.QueueSongAdd,
+    current_user: models.User = Depends(require_self_or_403),
+    db: Session = Depends(get_db),
+):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only access your own resources")
     get_user_or_404(db, user_id)
     get_song_or_404(db, payload.song_id)
     last = db.query(models.QueueItem).filter(models.QueueItem.user_id == user_id).order_by(models.QueueItem.position.desc()).first()
@@ -1412,14 +1616,27 @@ def add_to_queue(user_id: int, payload: schemas.QueueSongAdd, db: Session = Depe
 
 
 @app.get("/users/{user_id}/queue")
-def get_queue(user_id: int, db: Session = Depends(get_db)):
+def get_queue(
+    user_id: int,
+    current_user: models.User = Depends(require_self_or_403),
+    db: Session = Depends(get_db),
+):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only access your own resources")
     get_user_or_404(db, user_id)
     rows = db.query(models.QueueItem).filter(models.QueueItem.user_id == user_id).order_by(models.QueueItem.position, models.QueueItem.id).all()
     return [{"queue_item_id": row.id, "position": row.position, "song": serialize_song(get_song_or_404(db, row.song_id))} for row in rows]
 
 
 @app.delete("/users/{user_id}/queue/{queue_item_id}")
-def remove_from_queue(user_id: int, queue_item_id: int, db: Session = Depends(get_db)):
+def remove_from_queue(
+    user_id: int,
+    queue_item_id: int,
+    current_user: models.User = Depends(require_self_or_403),
+    db: Session = Depends(get_db),
+):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only access your own resources")
     get_user_or_404(db, user_id)
     item = db.query(models.QueueItem).filter(models.QueueItem.id == queue_item_id, models.QueueItem.user_id == user_id).first()
     if not item:

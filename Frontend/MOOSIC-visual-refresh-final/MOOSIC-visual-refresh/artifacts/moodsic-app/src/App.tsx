@@ -16,7 +16,7 @@ type MoodName = 'Sad' | 'Happy' | 'Neutral' | 'Exhausted' | 'Angry';
 type Mood = { name: MoodName; color: string; background: string; text: string; line: string; description: string; art: string };
 type Track = { title: string; artist: string; duration: string; mood: MoodName };
 type Playlist = { id: string; name: string; mood: MoodName; count: number; description: string; trackTitles: string[]; isCustom?: boolean };
-type AuthUser = { id: string; email: string; name: string; username: string };
+type AuthUser = { id: string; email: string; name: string; username: string; role: string };
 type AuthMode = 'login' | 'signup';
 
 const moods: Mood[] = [
@@ -135,30 +135,7 @@ function avatarInitial(user: AuthUser | null) {
   return user?.username?.trim().charAt(0).toUpperCase() || user?.name?.trim().charAt(0).toUpperCase() || '?';
 }
 
-function readDemoUser() {
-  try {
-    const stored = window.localStorage.getItem('moodsic-demo-user');
-    return stored ? JSON.parse(stored) as AuthUser : null;
-  } catch {
-    return null;
-  }
-}
-
-function storeDemoUser(user: AuthUser) {
-  window.localStorage.setItem('moodsic-demo-user', JSON.stringify(user));
-}
-
-async function authRequest(path: string, body?: Record<string, string>) {
-  const response = await fetch(`/api/auth/${path}`, {
-    method: body ? 'POST' : 'GET',
-    credentials: 'include',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.message || 'Something went wrong. Try again.');
-  return payload as { user: AuthUser };
-}
+import api from './lib/api';
 
 function LoadingScreen() {
   return (
@@ -198,15 +175,38 @@ function AuthPage({ mode, setMode, onAuthenticated, connectionError }: { mode: A
     setIsSubmitting(true);
     setMessage('');
     try {
-      const existing = readDemoUser();
-      const fallbackUser: AuthUser = existing ?? {
-        id: `demo-${form.email.toLowerCase()}`,
-        email: form.email.trim().toLowerCase(),
-        name: isSignup ? form.name.trim() : form.email.split('@')[0],
-        username: isSignup ? form.username.trim().toLowerCase() : form.email.split('@')[0].toLowerCase(),
-      };
-      storeDemoUser(fallbackUser);
-      onAuthenticated(fallbackUser);
+      if (isSignup) {
+        if (form.password.length < 8) throw new Error('Password must be at least 8 characters.');
+        const payload = await api.apiFetch('/users', { method: 'POST', body: { name: form.name.trim(), username: form.username.trim().toLowerCase(), email: form.email.trim().toLowerCase(), password: form.password } });
+        const rawUser = payload?.user;
+        const token = payload?.token;
+        if (!rawUser || !token) throw new Error('Invalid response from server.');
+        const mapped: AuthUser = {
+          id: String(rawUser.user_id ?? rawUser.id ?? rawUser.userId ?? ''),
+          email: rawUser.email ?? '',
+          name: rawUser.name ?? '',
+          username: rawUser.username ?? '',
+          role: rawUser.role ?? '',
+        };
+        api.setToken(token);
+        console.log('[auth] login success', mapped);
+        onAuthenticated(mapped);
+      } else {
+        const payload = await api.apiFetch('/login', { method: 'POST', body: { email: form.email.trim().toLowerCase(), password: form.password } });
+        const rawUser = payload?.user;
+        const token = payload?.token;
+        if (!rawUser || !token) throw new Error('Invalid response from server.');
+        const mapped: AuthUser = {
+          id: String(rawUser.user_id ?? rawUser.id ?? rawUser.userId ?? ''),
+          email: rawUser.email ?? '',
+          name: rawUser.name ?? '',
+          username: rawUser.username ?? '',
+          role: rawUser.role ?? '',
+        };
+        api.setToken(token);
+        console.log('[auth] login success', mapped);
+        onAuthenticated(mapped);
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Something went wrong. Try again.');
     } finally {
@@ -228,7 +228,7 @@ function AuthPage({ mode, setMode, onAuthenticated, connectionError }: { mode: A
             {isSignup && <label>Name<input value={form.name} onChange={(event) => updateField('name', event.target.value)} autoComplete="name" placeholder="Your name" required /></label>}
             {isSignup && <label>Username<input value={form.username} onChange={(event) => updateField('username', event.target.value)} autoComplete="username" placeholder="Choose a username" required /></label>}
             <label>Email<input type="email" value={form.email} onChange={(event) => updateField('email', event.target.value)} autoComplete="email" placeholder="Enter email" required /></label>
-            <label>Password<input type="password" value={form.password} onChange={(event) => updateField('password', event.target.value)} autoComplete={isSignup ? 'new-password' : 'current-password'} placeholder="Enter password" minLength={6} required /></label>
+            <label>Password<input type="password" value={form.password} onChange={(event) => updateField('password', event.target.value)} autoComplete={isSignup ? 'new-password' : 'current-password'} placeholder="Enter password" minLength={8} required /></label>
             {message && <p className="auth-message" role="alert">{message}</p>}
             <button className="auth-submit" type="submit" disabled={isSubmitting}>{isSubmitting ? 'Opening your room…' : isSignup ? 'Create account' : 'Enter MOOSIC'}</button>
           </form>
@@ -252,24 +252,57 @@ function AuthGate({
   setAuthMode: (mode: AuthMode) => void;
   children: ReactNode;
 }) {
-  const [state, setState] = useState<'checking' | 'ready'>(authUser ? 'ready' : 'checking');
+  const [state, setState] = useState<'checking' | 'ready'>('checking');
   const [connectionError, setConnectionError] = useState('');
 
   useEffect(() => {
     if (authUser) {
+      console.log('[auth] user already in state', authUser);
       setState('ready');
       return;
     }
 
     let active = true;
-    const localUser = readDemoUser();
-    if (localUser) {
-      setAuthUser(localUser);
+    const token = api.getToken();
+    console.log('[auth] startup token found', Boolean(token));
+
+    if (!token) {
+      console.log('[auth] no token, showing login');
+      setConnectionError('');
       setState('ready');
       return () => { active = false; };
     }
 
-    setState('ready');
+    (async () => {
+      console.log('[auth] /me started');
+      try {
+        const payload = await api.apiFetch('/me');
+        if (!active) return;
+        const rawUser = payload?.user ?? payload;
+        if (!rawUser) throw new Error('Failed to restore session.');
+        const mapped: AuthUser = {
+          id: String(rawUser.user_id ?? rawUser.id ?? rawUser.userId ?? ''),
+          email: rawUser.email ?? '',
+          name: rawUser.name ?? '',
+          username: rawUser.username ?? '',
+          role: rawUser.role ?? '',
+        };
+        console.log('[auth] /me succeeded, user restored', mapped);
+        setAuthUser(mapped);
+        setState('ready');
+      } catch (err: any) {
+        if (!active) return;
+        console.log('[auth] /me failed', err?.status, err?.message);
+        if (err?.status === 401) {
+          api.clearToken();
+          setConnectionError('Session expired. Please sign in again.');
+        } else {
+          setConnectionError(err instanceof Error ? err.message : 'Unable to reach authentication server.');
+        }
+        setAuthUser(null);
+        setState('ready');
+      }
+    })();
 
     return () => { active = false; };
   }, [authUser, setAuthUser]);
@@ -723,7 +756,8 @@ function Router({
   const selectMood = (mood: MoodName) => { setSelectedMood(mood); setSelectedPlaylist(null); setLocation('/choose-playlist'); };
   const choosePlaylist = (playlist: Playlist) => { setSelectedPlaylist(playlist); setLocation('/home'); };
   const signOut = () => {
-    window.localStorage.removeItem('moodsic-demo-user');
+    console.log('[auth] logout triggered');
+    api.clearToken();
     setAuthUser(null);
     setAuthMode('login');
     setLocation('/');
@@ -763,7 +797,7 @@ function NotFound() {
 }
 
 function App() {
-  const [authUser, setAuthUser] = useState<AuthUser | null>(() => readDemoUser());
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [authMode, setAuthMode] = useState<AuthMode>('login');
   return (
     <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>

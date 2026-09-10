@@ -11,9 +11,10 @@ from starlette.responses import JSONResponse
 
 # Set up security logging
 logging.basicConfig(
-    filename="security.log",
+     filename="security.log",
     level=logging.WARNING,
-    format="%(asctime)s - %(levelname)s - %(message)s"
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    filemode="a"
 )
 
 # Store request times for each IP
@@ -28,8 +29,14 @@ TIME_WINDOW = 60  # seconds
 SUSPICIOUS_PATTERNS = [
     r"(?i)(union\s+select)",
     r"(?i)(drop\s+table)",
+    r"(?i)(delete\s+from)",
+    r"(?i)(insert\s+into)",
+    r"(?i)(update\s+\w+\s+set)",
     r"(?i)(or\s+1\s*=\s*1)",
+    r"(?i)(and\s+1\s*=\s*1)",
     r"(?i)(<script)",
+    r"(?i)(javascript:)",
+    r"(?i)(onerror\s*=)",
 ]
 
 
@@ -39,7 +46,50 @@ class FirewallMiddleware(BaseHTTPMiddleware):
 
         # Get user's IP address
         client_ip = request.client.host if request.client else "unknown"
+                # Block access to sensitive or internal paths
+        PROTECTED_PATHS = {
+            "/admin",
+            "/docs",
+            "/redoc",
+            "/openapi.json"
+        }
 
+        if request.url.path in PROTECTED_PATHS:
+            logging.warning(
+                f"Blocked IP {client_ip}: Protected path access attempted"
+            )
+
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Access to this path is restricted."}
+            )
+                # Allow only approved HTTP methods
+        ALLOWED_METHODS = {"GET", "POST", "PUT", "DELETE"}
+
+        if request.method not in ALLOWED_METHODS:
+            logging.warning(
+                f"Blocked IP {client_ip}: Disallowed HTTP method {request.method}"
+            )
+
+            return JSONResponse(
+                status_code=405,
+                content={"detail": "HTTP method not allowed."}
+            )
+
+                # Limit request body size
+        MAX_BODY_SIZE = 1_000_000  # 1 MB
+
+        content_length = request.headers.get("content-length")
+
+        if content_length and int(content_length) > MAX_BODY_SIZE:
+            logging.warning(
+                f"Blocked IP {client_ip}: Request body too large"
+            )
+
+            return JSONResponse(
+                status_code=413,
+                content={"detail": "Request too large."}
+            )
         current_time = time.time()
 
         # Remove old requests
@@ -63,6 +113,18 @@ class FirewallMiddleware(BaseHTTPMiddleware):
 
         # Check URL for suspicious patterns
         request_url = unquote(str(request.url))
+                # Limit the length of the request URL
+        MAX_URL_LENGTH = 2048
+
+        if len(request_url) > MAX_URL_LENGTH:
+            logging.warning(
+                f"Blocked IP {client_ip}: Request URL too long"
+            )
+
+            return JSONResponse(
+                status_code=414,
+                content={"detail": "Request URL too long."}
+            )
 
         for pattern in SUSPICIOUS_PATTERNS:
             if re.search(pattern, request_url):
@@ -77,5 +139,10 @@ class FirewallMiddleware(BaseHTTPMiddleware):
 
         # Allow normal request to continue
         response = await call_next(request)
+
+        # Add security headers
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
 
         return response
