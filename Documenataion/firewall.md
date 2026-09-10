@@ -14,6 +14,19 @@ Requests exceeding the limit are blocked with HTTP status code 429.
 
 ### 2. Suspicious Request Detection
 
+### T030 – Security Testing Results
+
+The firewall was tested on the local FastAPI server to verify backend availability, rate limiting, and suspicious request detection.
+
+* Backend Reachability Test: HTTP 200 — PASS
+* Rate Limiting Test: HTTP 429 — PASS
+* Suspicious Request Test: HTTP 403 — PASS
+
+**Overall Result: PASS**
+
+These tests confirmed that the implemented firewall security mechanisms were functioning as expected.
+
+
 Incoming request URLs are checked for suspicious patterns commonly associated with attacks, including:
 
 - SQL injection patterns such as UNION SELECT
