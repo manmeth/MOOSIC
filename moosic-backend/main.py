@@ -1,11 +1,14 @@
 from datetime import datetime, timedelta
 import os
+from pathlib import Path
 from urllib.parse import quote_plus
 
 import bcrypt
 import jwt
 from fastapi import Depends, FastAPI, HTTPException, Query, status, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from firewall import FirewallMiddleware
 from sqlalchemy.orm import Session
 
@@ -1768,3 +1771,16 @@ def get_bulk_audio_urls(db: Session = Depends(get_db)):
         }
         for song in songs
     ]
+
+
+FRONTEND_DIST = Path(__file__).resolve().parents[1] / "Frontend" / "MOOSIC-visual-refresh-final" / "MOOSIC-visual-refresh" / "artifacts" / "moodsic-app" / "dist" / "public"
+if (FRONTEND_DIST / "assets").is_dir():
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="frontend-assets")
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+def serve_frontend(full_path: str):
+    index_file = FRONTEND_DIST / "index.html"
+    if not index_file.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Frontend build not found")
+    return FileResponse(index_file)

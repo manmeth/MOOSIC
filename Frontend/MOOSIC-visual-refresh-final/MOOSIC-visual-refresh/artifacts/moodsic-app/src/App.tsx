@@ -15,6 +15,7 @@ import { ErrorBoundary } from '@/components/error-boundary';
 type MoodName = 'Sad' | 'Happy' | 'Neutral' | 'Exhausted' | 'Angry';
 type Mood = { name: MoodName; color: string; background: string; text: string; line: string; description: string; art: string };
 type Track = { title: string; artist: string; duration: string; mood: MoodName; audioUrl?: string };
+type BackendSong = { title: string; artist_name?: string | null; duration?: number | null; mood?: string | null; audio_url?: string | null };
 type Playlist = { id: string; name: string; mood: MoodName; count: number; description: string; trackTitles: string[]; isCustom?: boolean };
 type AuthUser = { id: string; email: string; name: string; username: string; role: string };
 type AuthMode = 'login' | 'signup';
@@ -27,7 +28,7 @@ const moods: Mood[] = [
   { name: 'Angry', color: '#da553b', background: '#ef8a76', text: '#f7efcd', line: 'Turn it up. Let it out.', description: 'A loud, honest room for the heat under your skin.', art: angryMoodArt },
 ];
 
-const tracks: Track[] = [
+const fallbackTracks: Track[] = [
   { title: 'Cake By The Ocean', artist: 'DNCE', duration: '3:39', mood: 'Happy' },
   { title: 'Electric Love', artist: 'BORNS', duration: '3:38', mood: 'Happy' },
   { title: 'Someone To You', artist: 'Banners', duration: '3:39', mood: 'Happy' },
@@ -81,20 +82,36 @@ const tracks: Track[] = [
 ];
 
 const playlists: Playlist[] = [
-  { id: 'p1', name: 'Blue Hour', mood: 'Sad', count: 5, trackTitles: tracks.filter((track) => track.mood === 'Sad').slice(0, 5).map((track) => track.title), description: 'For the quiet parts of the evening.' },
-  { id: 'p1-hindi', name: 'Monsoon Letters', mood: 'Sad', count: 5, trackTitles: tracks.filter((track) => track.mood === 'Sad').slice(5).map((track) => track.title), description: 'Hindi songs for the softer ache.' },
-  { id: 'p2', name: 'Windows Down', mood: 'Happy', count: 5, trackTitles: tracks.filter((track) => track.mood === 'Happy').slice(0, 5).map((track) => track.title), description: 'A little sunlight, pressed to vinyl.' },
-  { id: 'p2-hindi', name: 'Desi Daydream', mood: 'Happy', count: 5, trackTitles: tracks.filter((track) => track.mood === 'Happy').slice(5).map((track) => track.title), description: 'Hindi songs for the bright side.' },
-  { id: 'p3', name: 'The Middle Distance', mood: 'Neutral', count: 5, trackTitles: tracks.filter((track) => track.mood === 'Neutral').slice(0, 5).map((track) => track.title), description: 'Focus without the fuss.' },
-  { id: 'p3-hindi', name: 'Soft Focus', mood: 'Neutral', count: 5, trackTitles: tracks.filter((track) => track.mood === 'Neutral').slice(5).map((track) => track.title), description: 'Hindi songs for an easy middle ground.' },
-  { id: 'p4', name: 'Low Battery', mood: 'Exhausted', count: 5, trackTitles: tracks.filter((track) => track.mood === 'Exhausted').slice(0, 5).map((track) => track.title), description: 'Soft sounds for a soft landing.' },
-  { id: 'p4-hindi', name: 'Sukoon Station', mood: 'Exhausted', count: 5, trackTitles: tracks.filter((track) => track.mood === 'Exhausted').slice(5).map((track) => track.title), description: 'Hindi songs for the slow comedown.' },
-  { id: 'p5', name: 'Loudly, Please', mood: 'Angry', count: 5, trackTitles: tracks.filter((track) => track.mood === 'Angry').slice(0, 5).map((track) => track.title), description: 'Pressure, released.' },
-  { id: 'p5-hindi', name: 'Gussa FM', mood: 'Angry', count: 5, trackTitles: tracks.filter((track) => track.mood === 'Angry').slice(5).map((track) => track.title), description: 'Hindi songs for the fire in your chest.' },
+  { id: 'p1', name: 'Blue Hour', mood: 'Sad', count: 5, trackTitles: fallbackTracks.filter((track) => track.mood === 'Sad').slice(0, 5).map((track) => track.title), description: 'For the quiet parts of the evening.' },
+  { id: 'p1-hindi', name: 'Monsoon Letters', mood: 'Sad', count: 5, trackTitles: fallbackTracks.filter((track) => track.mood === 'Sad').slice(5).map((track) => track.title), description: 'Hindi songs for the softer ache.' },
+  { id: 'p2', name: 'Windows Down', mood: 'Happy', count: 5, trackTitles: fallbackTracks.filter((track) => track.mood === 'Happy').slice(0, 5).map((track) => track.title), description: 'A little sunlight, pressed to vinyl.' },
+  { id: 'p2-hindi', name: 'Desi Daydream', mood: 'Happy', count: 5, trackTitles: fallbackTracks.filter((track) => track.mood === 'Happy').slice(5).map((track) => track.title), description: 'Hindi songs for the bright side.' },
+  { id: 'p3', name: 'The Middle Distance', mood: 'Neutral', count: 5, trackTitles: fallbackTracks.filter((track) => track.mood === 'Neutral').slice(0, 5).map((track) => track.title), description: 'Focus without the fuss.' },
+  { id: 'p3-hindi', name: 'Soft Focus', mood: 'Neutral', count: 5, trackTitles: fallbackTracks.filter((track) => track.mood === 'Neutral').slice(5).map((track) => track.title), description: 'Hindi songs for an easy middle ground.' },
+  { id: 'p4', name: 'Low Battery', mood: 'Exhausted', count: 5, trackTitles: fallbackTracks.filter((track) => track.mood === 'Exhausted').slice(0, 5).map((track) => track.title), description: 'Soft sounds for a soft landing.' },
+  { id: 'p4-hindi', name: 'Sukoon Station', mood: 'Exhausted', count: 5, trackTitles: fallbackTracks.filter((track) => track.mood === 'Exhausted').slice(5).map((track) => track.title), description: 'Hindi songs for the slow comedown.' },
+  { id: 'p5', name: 'Loudly, Please', mood: 'Angry', count: 5, trackTitles: fallbackTracks.filter((track) => track.mood === 'Angry').slice(0, 5).map((track) => track.title), description: 'Pressure, released.' },
+  { id: 'p5-hindi', name: 'Gussa FM', mood: 'Angry', count: 5, trackTitles: fallbackTracks.filter((track) => track.mood === 'Angry').slice(5).map((track) => track.title), description: 'Hindi songs for the fire in your chest.' },
 ];
+
+let tracks: Track[] = fallbackTracks;
 
 function moodFor(name: MoodName) {
   return moods.find((mood) => mood.name === name) ?? moods[2];
+}
+
+function trackFromDatabase(song: BackendSong): Track {
+  const mood = moods.some((option) => option.name === song.mood) ? song.mood as MoodName : 'Neutral';
+  const durationSeconds = song.duration ?? 0;
+  const minutes = Math.floor(durationSeconds / 60);
+  const seconds = String(durationSeconds % 60).padStart(2, '0');
+  return {
+    title: song.title,
+    artist: song.artist_name ?? 'Unknown artist',
+    duration: durationSeconds ? `${minutes}:${seconds}` : '--:--',
+    mood,
+    audioUrl: song.audio_url ?? undefined,
+  };
 }
 
 function moodStyle(mood: Mood): CSSProperties {
@@ -118,6 +135,11 @@ function mutedTextColor(background?: string) {
   const luminance = channels.map((channel) => channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
     .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
   return luminance > 0.13 ? '#4f4b57' : '#aaa6b2';
+}
+
+function youtubeEmbedUrl(audioUrl?: string) {
+  if (!audioUrl?.includes('youtube.com/embed/')) return undefined;
+  return `${audioUrl}${audioUrl.includes('?') ? '&' : '?'}autoplay=1&rel=0`;
 }
 
 const themePalette = [
@@ -460,8 +482,13 @@ function HomePage({ selectedMood, selectedPlaylist, setNotice }: { selectedMood:
     ? tracks.filter((track) => selectedPlaylist.trackTitles.includes(track.title))
     : tracks.filter((track) => track.mood === selectedMood).slice(0, 5);
   const current = moodTracks[trackIndex % moodTracks.length] ?? tracks[0];
+  const embedUrl = youtubeEmbedUrl(current.audioUrl);
   useEffect(() => {
     audioRef.current?.pause();
+    if (embedUrl) {
+      setIsPlaying(true);
+      return;
+    }
     if (!current.audioUrl) {
       setIsPlaying(false);
       return;
@@ -474,8 +501,12 @@ function HomePage({ selectedMood, selectedPlaylist, setNotice }: { selectedMood:
       setNotice('This track cannot autoplay. Press play to start it.');
     });
     return () => { audio.pause(); audio.onended = null; };
-  }, [current.audioUrl, moodTracks.length, setNotice]);
+  }, [current.audioUrl, embedUrl, moodTracks.length, setNotice]);
   const togglePlayback = () => {
+    if (embedUrl) {
+      setNotice('Use the YouTube player controls to start or pause this track.');
+      return;
+    }
     if (!current.audioUrl) {
       setNotice('This track has no playable audio URL yet.');
       return;
@@ -510,6 +541,7 @@ function HomePage({ selectedMood, selectedPlaylist, setNotice }: { selectedMood:
           <div className="now-playing">
             <div><div className="eyebrow" style={{ color: mood.color }}>Now on the turntable</div><div className="track-title" data-testid="text-current-track">{current.title}</div><div className="track-artist">{current.artist}</div></div>
           </div>
+          {embedUrl && <iframe key={embedUrl} title={`Playing ${current.title}`} src={embedUrl} width="100%" height="152" style={{ border: 0, borderRadius: 8, marginTop: 18 }} allow="autoplay; encrypted-media; picture-in-picture" />}
           <div className="progress-wrap">
             <div className="wave-row" aria-hidden="true">{Array.from({ length: 34 }).map((_, index) => <span key={index} style={{ '--bar': `${.25 + ((index * 17) % 70) / 100}` } as CSSProperties} />)}</div>
             <div className="progress-line"><span style={{ background: mood.color }} /></div>
@@ -789,6 +821,7 @@ function Router({
     if (!stored) return [];
     try { return JSON.parse(stored) as string[]; } catch { return []; }
   });
+  const [, setCatalogVersion] = useState(0);
   const [notice, setNotice] = useState('');
   const [customTheme, setCustomTheme] = useState<string | null>(() => window.localStorage.getItem('moodsic-custom-theme'));
   const selectMood = (mood: MoodName) => { setSelectedMood(mood); setSelectedPlaylist(null); setLocation('/choose-playlist'); };
@@ -805,6 +838,19 @@ function Router({
       ? { ...playlist, trackTitles: [...playlist.trackTitles, trackTitle], count: playlist.trackTitles.length + 1 }
       : playlist));
   };
+  useEffect(() => {
+    let active = true;
+    api.apiFetch<BackendSong[]>('/songs?limit=200')
+      .then((songs) => {
+        if (!active || songs.length === 0) return;
+        tracks = songs.map(trackFromDatabase);
+        setCatalogVersion((version) => version + 1);
+      })
+      .catch(() => {
+        // Keep the bundled catalog available when the database is offline.
+      });
+    return () => { active = false; };
+  }, [authUser]);
   useEffect(() => { window.localStorage.setItem('moodsic-playlists', JSON.stringify(library)); }, [library]);
   useEffect(() => { window.localStorage.setItem('moodsic-deleted-playlists', JSON.stringify(deleted)); }, [deleted]);
   return (

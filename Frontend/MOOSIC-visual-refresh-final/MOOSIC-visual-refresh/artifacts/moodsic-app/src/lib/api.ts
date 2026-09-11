@@ -5,7 +5,7 @@ type ApiRequestOptions = Omit<RequestInit, 'body'> & {
 type ApiError = Error & { status?: number; details?: unknown };
 
 const TOKEN_KEY = 'moodsic-access-token';
-const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || '/backend';
+const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || (import.meta.env.DEV ? '/backend' : '');
 
 function createApiError(status: number, details: unknown): ApiError {
   const message = typeof details === 'string'
