@@ -1,4 +1,4 @@
-import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Home as HomeIcon, ListMusic, Music2, Pause, Play, RotateCcw, Search, SkipBack, SkipForward, UserRound, X, Disc3, Pencil, Trash2, ArrowLeft, Shuffle, Volume2, Plus, Sparkles, Check, WandSparkles, Palette, LogOut, ArrowRight } from 'lucide-react';
 import { Link, Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
 import logoAsset from '@assets/moodsic-references/moosic-logo.png';
@@ -14,7 +14,7 @@ import { ErrorBoundary } from '@/components/error-boundary';
 
 type MoodName = 'Sad' | 'Happy' | 'Neutral' | 'Exhausted' | 'Angry';
 type Mood = { name: MoodName; color: string; background: string; text: string; line: string; description: string; art: string };
-type Track = { title: string; artist: string; duration: string; mood: MoodName };
+type Track = { title: string; artist: string; duration: string; mood: MoodName; audioUrl?: string };
 type Playlist = { id: string; name: string; mood: MoodName; count: number; description: string; trackTitles: string[]; isCustom?: boolean };
 type AuthUser = { id: string; email: string; name: string; username: string; role: string };
 type AuthMode = 'login' | 'signup';
@@ -453,14 +453,44 @@ function RecordCover({ mood, label = 'MOOSIC' }: { mood: Mood; label?: string })
 function HomePage({ selectedMood, selectedPlaylist, setNotice }: { selectedMood: MoodName; selectedPlaylist: Playlist | null; setNotice: (notice: string) => void }) {
   const [isPlaying, setIsPlaying] = useState(true);
   const [trackIndex, setTrackIndex] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [, setLocation] = useLocation();
   const mood = moodFor(selectedMood);
   const moodTracks = selectedPlaylist
     ? tracks.filter((track) => selectedPlaylist.trackTitles.includes(track.title))
     : tracks.filter((track) => track.mood === selectedMood).slice(0, 5);
   const current = moodTracks[trackIndex % moodTracks.length] ?? tracks[0];
-  const nextTrack = () => { setTrackIndex((index) => (index + 1) % moodTracks.length); setIsPlaying(true); };
-  const previousTrack = () => { setTrackIndex((index) => (index - 1 + moodTracks.length) % moodTracks.length); setIsPlaying(true); };
+  useEffect(() => {
+    audioRef.current?.pause();
+    if (!current.audioUrl) {
+      setIsPlaying(false);
+      return;
+    }
+    const audio = new Audio(current.audioUrl);
+    audioRef.current = audio;
+    audio.onended = () => setTrackIndex((index) => (index + 1) % moodTracks.length);
+    audio.play().then(() => setIsPlaying(true)).catch(() => {
+      setIsPlaying(false);
+      setNotice('This track cannot autoplay. Press play to start it.');
+    });
+    return () => { audio.pause(); audio.onended = null; };
+  }, [current.audioUrl, moodTracks.length, setNotice]);
+  const togglePlayback = () => {
+    if (!current.audioUrl) {
+      setNotice('This track has no playable audio URL yet.');
+      return;
+    }
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) {
+      audio.play().then(() => setIsPlaying(true));
+    } else {
+      audio.pause();
+      setIsPlaying(false);
+    }
+  };
+  const nextTrack = () => { setTrackIndex((index) => (index + 1) % moodTracks.length); };
+  const previousTrack = () => { setTrackIndex((index) => (index - 1 + moodTracks.length) % moodTracks.length); };
   return (
     <section className="page" style={moodStyle(mood)}>
       <div className="mood-hero animate-rise">
@@ -469,7 +499,7 @@ function HomePage({ selectedMood, selectedPlaylist, setNotice }: { selectedMood:
           <h1>{mood.line}</h1>
           <p>{mood.description}</p>
           <div className="hero-links">
-            <button className="solid-button" onClick={() => setIsPlaying(!isPlaying)} data-testid="button-hero-play"><Play size={15} fill="currentColor" /> {isPlaying ? 'Playing now' : 'Play the room'}</button>
+            <button className="solid-button" onClick={togglePlayback} data-testid="button-hero-play"><Play size={15} fill="currentColor" /> {isPlaying ? 'Playing now' : 'Play the room'}</button>
             <button className="outline-button" onClick={() => document.getElementById('mood-player')?.scrollIntoView({ behavior: 'smooth' })} data-testid="button-scroll-player"><Volume2 size={15} /> See the needle</button>
           </div>
         </div>
@@ -488,7 +518,7 @@ function HomePage({ selectedMood, selectedPlaylist, setNotice }: { selectedMood:
           <div className="player-controls">
             <button className="player-control" onClick={() => setNotice('Shuffle is on for this room.')} aria-label="Shuffle" data-testid="button-shuffle"><Shuffle size={18} /></button>
             <button className="player-control" onClick={previousTrack} aria-label="Previous track" data-testid="button-previous"><SkipBack size={20} /></button>
-            <button className="play-button" onClick={() => setIsPlaying(!isPlaying)} aria-label={isPlaying ? 'Pause' : 'Play'} data-testid="button-play-pause">{isPlaying ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}</button>
+            <button className="play-button" onClick={togglePlayback} aria-label={isPlaying ? 'Pause' : 'Play'} data-testid="button-play-pause">{isPlaying ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}</button>
             <button className="player-control" onClick={nextTrack} aria-label="Next track" data-testid="button-next"><SkipForward size={20} /></button>
             <button className="player-control" onClick={() => setNotice('Volume is set for the room.')} aria-label="Volume" data-testid="button-volume"><Volume2 size={18} /></button>
           </div>
@@ -496,7 +526,7 @@ function HomePage({ selectedMood, selectedPlaylist, setNotice }: { selectedMood:
         <div className="queue-panel">
           <div className="panel-heading"><h3>Coming up</h3><span>{moodTracks.length} sides</span></div>
           <div className="queue-list">{moodTracks.map((track, index) => (
-            <button key={track.title} className={`queue-item ${track.title === current.title ? 'current' : ''}`} onClick={() => { setTrackIndex(index); setIsPlaying(true); }} data-testid={`button-queue-track-${index}`}>
+              <button key={track.title} className={`queue-item ${track.title === current.title ? 'current' : ''}`} onClick={() => { setTrackIndex(index); }} data-testid={`button-queue-track-${index}`}>
               <span className="queue-number">0{index + 1}</span><span><strong>{track.title}</strong><small>{track.artist}</small></span><span className="queue-duration">{track.duration}</span>
             </button>
           ))}</div>
@@ -749,8 +779,16 @@ function Router({
   const [location, setLocation] = useLocation();
   const [selectedMood, setSelectedMood] = useState<MoodName>('Neutral');
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
-  const [library, setLibrary] = useState<Playlist[]>(playlists);
-  const [deleted, setDeleted] = useState<string[]>([]);
+  const [library, setLibrary] = useState<Playlist[]>(() => {
+    const stored = window.localStorage.getItem('moodsic-playlists');
+    if (!stored) return playlists;
+    try { return JSON.parse(stored) as Playlist[]; } catch { return playlists; }
+  });
+  const [deleted, setDeleted] = useState<string[]>(() => {
+    const stored = window.localStorage.getItem('moodsic-deleted-playlists');
+    if (!stored) return [];
+    try { return JSON.parse(stored) as string[]; } catch { return []; }
+  });
   const [notice, setNotice] = useState('');
   const [customTheme, setCustomTheme] = useState<string | null>(() => window.localStorage.getItem('moodsic-custom-theme'));
   const selectMood = (mood: MoodName) => { setSelectedMood(mood); setSelectedPlaylist(null); setLocation('/choose-playlist'); };
@@ -767,6 +805,8 @@ function Router({
       ? { ...playlist, trackTitles: [...playlist.trackTitles, trackTitle], count: playlist.trackTitles.length + 1 }
       : playlist));
   };
+  useEffect(() => { window.localStorage.setItem('moodsic-playlists', JSON.stringify(library)); }, [library]);
+  useEffect(() => { window.localStorage.setItem('moodsic-deleted-playlists', JSON.stringify(deleted)); }, [deleted]);
   return (
     <AuthGate authUser={authUser} setAuthUser={setAuthUser} authMode={authMode} setAuthMode={setAuthMode}>
       <Shell
