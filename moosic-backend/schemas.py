@@ -93,3 +93,19 @@ class AudioUrlUpdate(BaseModel):
 
 class BulkAudioUrlUpdate(BaseModel):
     updates: list[AudioUrlUpdate]
+
+
+class PremiumSubscribeRequest(BaseModel):
+    plan: str
+    payment_method: str
+
+
+class PremiumStatusResponse(BaseModel):
+    is_premium: bool
+    plan: str | None
+    status: str | None
+
+
+class PremiumCancelResponse(BaseModel):
+    message: str
+    is_premium: bool

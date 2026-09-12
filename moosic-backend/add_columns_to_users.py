@@ -32,6 +32,34 @@ def main():
         else:
             print("'role' column already present")
 
+        if "is_premium" not in cols:
+            print("Adding 'is_premium' column with default 0...")
+            conn.execute("ALTER TABLE users ADD COLUMN is_premium BOOLEAN NOT NULL DEFAULT 0")
+        else:
+            print("'is_premium' column already present")
+
+        table_names = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        existing_tables = {row[0] for row in table_names}
+
+        if "payments" not in existing_tables:
+            print("Adding 'payments' table...")
+            conn.execute(
+                """
+                CREATE TABLE payments (
+                    id INTEGER PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    plan TEXT NOT NULL,
+                    amount REAL NOT NULL,
+                    currency TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    payment_date DATETIME,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+                """
+            )
+        else:
+            print("'payments' table already exists")
+
         # Ensure existing rows have non-null role and name (defensive)
         conn.execute("UPDATE users SET role = 'user' WHERE role IS NULL")
         conn.execute("UPDATE users SET name = '' WHERE name IS NULL")

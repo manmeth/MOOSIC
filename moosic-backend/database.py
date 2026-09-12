@@ -100,6 +100,9 @@ def ensure_compatibility_columns():
         if "role" not in columns:
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR DEFAULT 'user'"))
+        if "is_premium" not in columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE users ADD COLUMN is_premium BOOLEAN DEFAULT 0"))
 
     if "playlists" in inspector.get_table_names():
         columns = [column["name"] for column in inspector.get_columns("playlists")]

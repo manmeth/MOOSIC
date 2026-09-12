@@ -6,7 +6,7 @@ from collections import defaultdict
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 
 # Set up security logging
@@ -46,6 +46,24 @@ class FirewallMiddleware(BaseHTTPMiddleware):
 
         # Get user's IP address
         client_ip = request.client.host if request.client else "unknown"
+
+        if request.method == "OPTIONS":
+            origin = request.headers.get("origin", "")
+            requested_headers = request.headers.get(
+                "access-control-request-headers",
+                "Authorization, Content-Type, Accept",
+            )
+            return Response(
+                status_code=204,
+                headers={
+                    "Access-Control-Allow-Origin": origin,
+                    "Access-Control-Allow-Credentials": "true",
+                    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+                    "Access-Control-Allow-Headers": requested_headers,
+                    "Access-Control-Max-Age": "600",
+                },
+            )
+
                 # Block access to sensitive or internal paths
         PROTECTED_PATHS = {
             "/admin",
@@ -64,7 +82,7 @@ class FirewallMiddleware(BaseHTTPMiddleware):
                 content={"detail": "Access to this path is restricted."}
             )
                 # Allow only approved HTTP methods
-        ALLOWED_METHODS = {"GET", "POST", "PUT", "DELETE"}
+        ALLOWED_METHODS = {"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 
         if request.method not in ALLOWED_METHODS:
             logging.warning(

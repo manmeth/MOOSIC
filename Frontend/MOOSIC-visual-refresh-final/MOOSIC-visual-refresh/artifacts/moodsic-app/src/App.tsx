@@ -1,5 +1,5 @@
-import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from 'react';
-import { Home as HomeIcon, ListMusic, Music2, Pause, Play, RotateCcw, Search, SkipBack, SkipForward, UserRound, X, Disc3, Pencil, Trash2, ArrowLeft, Shuffle, Volume2, Plus, Sparkles, Check, WandSparkles, Palette, LogOut, ArrowRight } from 'lucide-react';
+import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { Home as HomeIcon, ListMusic, Music2, Pause, Play, RotateCcw, Search, SkipBack, SkipForward, UserRound, X, Disc3, Pencil, Trash2, ArrowLeft, Shuffle, Volume2, Plus, Sparkles, Check, WandSparkles, Palette, LogOut, ArrowRight, Download, Crown, Lock } from 'lucide-react';
 import { Link, Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
 import logoAsset from '@assets/moodsic-references/moosic-logo.png';
 import loginBackdropAsset from '@assets/moodsic-references/login-backdrop.png';
@@ -11,14 +11,17 @@ import neutralMoodArt from '@assets/moodsic-references/mood-art-neutral.png';
 import exhaustedMoodArt from '@assets/moodsic-references/mood-art-exhausted.png';
 import angryMoodArt from '@assets/moodsic-references/mood-art-angry.png';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { Downloads, type DownloadedSong } from './Premium/Downloads';
+import { PremiumPage } from './Premium/PremiumPage';
+import { Themes } from './Premium/Themes';
 
 type MoodName = 'Sad' | 'Happy' | 'Neutral' | 'Exhausted' | 'Angry';
 type Mood = { name: MoodName; color: string; background: string; text: string; line: string; description: string; art: string };
-type Track = { title: string; artist: string; duration: string; mood: MoodName };
+type Track = { title: string; artist: string; duration: string; mood: MoodName; audioUrl?: string };
+type BackendSong = { title: string; artist_name?: string | null; duration?: number | null; mood?: string | null; audio_url?: string | null };
 type Playlist = { id: string; name: string; mood: MoodName; count: number; description: string; trackTitles: string[]; isCustom?: boolean };
 type AuthUser = { id: string; email: string; name: string; username: string; role: string };
 type AuthMode = 'login' | 'signup';
-
 const moods: Mood[] = [
   { name: 'Sad', color: '#0c0d88', background: '#313ca8', text: '#f7efcd', line: 'Let the blue stay awhile.', description: 'A soft landing for the feelings that have nowhere else to go.', art: sadMoodArt },
   { name: 'Happy', color: '#f1bc46', background: '#f7d579', text: '#3d0000', line: 'Put some light back in the room.', description: 'Bright edges, open windows, and a little more movement.', art: happyMoodArt },
@@ -27,7 +30,7 @@ const moods: Mood[] = [
   { name: 'Angry', color: '#da553b', background: '#ef8a76', text: '#f7efcd', line: 'Turn it up. Let it out.', description: 'A loud, honest room for the heat under your skin.', art: angryMoodArt },
 ];
 
-const tracks: Track[] = [
+const fallbackTracks: Track[] = [
   { title: 'Cake By The Ocean', artist: 'DNCE', duration: '3:39', mood: 'Happy' },
   { title: 'Electric Love', artist: 'BORNS', duration: '3:38', mood: 'Happy' },
   { title: 'Someone To You', artist: 'Banners', duration: '3:39', mood: 'Happy' },
@@ -81,20 +84,36 @@ const tracks: Track[] = [
 ];
 
 const playlists: Playlist[] = [
-  { id: 'p1', name: 'Blue Hour', mood: 'Sad', count: 5, trackTitles: tracks.filter((track) => track.mood === 'Sad').slice(0, 5).map((track) => track.title), description: 'For the quiet parts of the evening.' },
-  { id: 'p1-hindi', name: 'Monsoon Letters', mood: 'Sad', count: 5, trackTitles: tracks.filter((track) => track.mood === 'Sad').slice(5).map((track) => track.title), description: 'Hindi songs for the softer ache.' },
-  { id: 'p2', name: 'Windows Down', mood: 'Happy', count: 5, trackTitles: tracks.filter((track) => track.mood === 'Happy').slice(0, 5).map((track) => track.title), description: 'A little sunlight, pressed to vinyl.' },
-  { id: 'p2-hindi', name: 'Desi Daydream', mood: 'Happy', count: 5, trackTitles: tracks.filter((track) => track.mood === 'Happy').slice(5).map((track) => track.title), description: 'Hindi songs for the bright side.' },
-  { id: 'p3', name: 'The Middle Distance', mood: 'Neutral', count: 5, trackTitles: tracks.filter((track) => track.mood === 'Neutral').slice(0, 5).map((track) => track.title), description: 'Focus without the fuss.' },
-  { id: 'p3-hindi', name: 'Soft Focus', mood: 'Neutral', count: 5, trackTitles: tracks.filter((track) => track.mood === 'Neutral').slice(5).map((track) => track.title), description: 'Hindi songs for an easy middle ground.' },
-  { id: 'p4', name: 'Low Battery', mood: 'Exhausted', count: 5, trackTitles: tracks.filter((track) => track.mood === 'Exhausted').slice(0, 5).map((track) => track.title), description: 'Soft sounds for a soft landing.' },
-  { id: 'p4-hindi', name: 'Sukoon Station', mood: 'Exhausted', count: 5, trackTitles: tracks.filter((track) => track.mood === 'Exhausted').slice(5).map((track) => track.title), description: 'Hindi songs for the slow comedown.' },
-  { id: 'p5', name: 'Loudly, Please', mood: 'Angry', count: 5, trackTitles: tracks.filter((track) => track.mood === 'Angry').slice(0, 5).map((track) => track.title), description: 'Pressure, released.' },
-  { id: 'p5-hindi', name: 'Gussa FM', mood: 'Angry', count: 5, trackTitles: tracks.filter((track) => track.mood === 'Angry').slice(5).map((track) => track.title), description: 'Hindi songs for the fire in your chest.' },
+  { id: 'p1', name: 'Blue Hour', mood: 'Sad', count: 5, trackTitles: fallbackTracks.filter((track) => track.mood === 'Sad').slice(0, 5).map((track) => track.title), description: 'For the quiet parts of the evening.' },
+  { id: 'p1-hindi', name: 'Monsoon Letters', mood: 'Sad', count: 5, trackTitles: fallbackTracks.filter((track) => track.mood === 'Sad').slice(5).map((track) => track.title), description: 'Hindi songs for the softer ache.' },
+  { id: 'p2', name: 'Windows Down', mood: 'Happy', count: 5, trackTitles: fallbackTracks.filter((track) => track.mood === 'Happy').slice(0, 5).map((track) => track.title), description: 'A little sunlight, pressed to vinyl.' },
+  { id: 'p2-hindi', name: 'Desi Daydream', mood: 'Happy', count: 5, trackTitles: fallbackTracks.filter((track) => track.mood === 'Happy').slice(5).map((track) => track.title), description: 'Hindi songs for the bright side.' },
+  { id: 'p3', name: 'The Middle Distance', mood: 'Neutral', count: 5, trackTitles: fallbackTracks.filter((track) => track.mood === 'Neutral').slice(0, 5).map((track) => track.title), description: 'Focus without the fuss.' },
+  { id: 'p3-hindi', name: 'Soft Focus', mood: 'Neutral', count: 5, trackTitles: fallbackTracks.filter((track) => track.mood === 'Neutral').slice(5).map((track) => track.title), description: 'Hindi songs for an easy middle ground.' },
+  { id: 'p4', name: 'Low Battery', mood: 'Exhausted', count: 5, trackTitles: fallbackTracks.filter((track) => track.mood === 'Exhausted').slice(0, 5).map((track) => track.title), description: 'Soft sounds for a soft landing.' },
+  { id: 'p4-hindi', name: 'Sukoon Station', mood: 'Exhausted', count: 5, trackTitles: fallbackTracks.filter((track) => track.mood === 'Exhausted').slice(5).map((track) => track.title), description: 'Hindi songs for the slow comedown.' },
+  { id: 'p5', name: 'Loudly, Please', mood: 'Angry', count: 5, trackTitles: fallbackTracks.filter((track) => track.mood === 'Angry').slice(0, 5).map((track) => track.title), description: 'Pressure, released.' },
+  { id: 'p5-hindi', name: 'Gussa FM', mood: 'Angry', count: 5, trackTitles: fallbackTracks.filter((track) => track.mood === 'Angry').slice(5).map((track) => track.title), description: 'Hindi songs for the fire in your chest.' },
 ];
+
+let tracks: Track[] = fallbackTracks;
 
 function moodFor(name: MoodName) {
   return moods.find((mood) => mood.name === name) ?? moods[2];
+}
+
+function trackFromDatabase(song: BackendSong): Track {
+  const mood = moods.some((option) => option.name === song.mood) ? song.mood as MoodName : 'Neutral';
+  const durationSeconds = song.duration ?? 0;
+  const minutes = Math.floor(durationSeconds / 60);
+  const seconds = String(durationSeconds % 60).padStart(2, '0');
+  return {
+    title: song.title,
+    artist: song.artist_name ?? 'Unknown artist',
+    duration: durationSeconds ? `${minutes}:${seconds}` : '--:--',
+    mood,
+    audioUrl: song.audio_url ?? undefined,
+  };
 }
 
 function moodStyle(mood: Mood): CSSProperties {
@@ -118,6 +137,11 @@ function mutedTextColor(background?: string) {
   const luminance = channels.map((channel) => channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
     .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
   return luminance > 0.13 ? '#4f4b57' : '#aaa6b2';
+}
+
+function youtubeEmbedUrl(audioUrl?: string) {
+  if (!audioUrl?.includes('youtube.com/embed/')) return undefined;
+  return `${audioUrl}${audioUrl.includes('?') ? '&' : '?'}autoplay=1&rel=0`;
 }
 
 const themePalette = [
@@ -328,6 +352,7 @@ function Navigation({ mobile = false }: { mobile?: boolean }) {
     { href: '/playlists', label: 'My playlists', icon: ListMusic },
     { href: '/restore', label: 'Restore', icon: RotateCcw },
     { href: '/search', label: 'Search', icon: Search },
+    { href: '/premium', label: 'Premium', icon: Crown },
     { href: '/theme', label: 'Custom Theme', icon: Palette },
     { href: '/profile', label: 'Profile', icon: UserRound },
   ];
@@ -450,17 +475,65 @@ function RecordCover({ mood, label = 'MOOSIC' }: { mood: Mood; label?: string })
   );
 }
 
-function HomePage({ selectedMood, selectedPlaylist, setNotice }: { selectedMood: MoodName; selectedPlaylist: Playlist | null; setNotice: (notice: string) => void }) {
+function HomePage({ selectedMood, selectedPlaylist, setNotice, isPremium, onDownloadCurrentTrack }: { selectedMood: MoodName; selectedPlaylist: Playlist | null; setNotice: (notice: string) => void; isPremium: boolean; onDownloadCurrentTrack: (title: string, artist: string) => void }) {
   const [isPlaying, setIsPlaying] = useState(true);
   const [trackIndex, setTrackIndex] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [, setLocation] = useLocation();
   const mood = moodFor(selectedMood);
   const moodTracks = selectedPlaylist
     ? tracks.filter((track) => selectedPlaylist.trackTitles.includes(track.title))
     : tracks.filter((track) => track.mood === selectedMood).slice(0, 5);
   const current = moodTracks[trackIndex % moodTracks.length] ?? tracks[0];
-  const nextTrack = () => { setTrackIndex((index) => (index + 1) % moodTracks.length); setIsPlaying(true); };
-  const previousTrack = () => { setTrackIndex((index) => (index - 1 + moodTracks.length) % moodTracks.length); setIsPlaying(true); };
+  const embedUrl = youtubeEmbedUrl(current.audioUrl);
+  useEffect(() => {
+    audioRef.current?.pause();
+    if (embedUrl) {
+      setIsPlaying(true);
+      return;
+    }
+    if (!current.audioUrl) {
+      setIsPlaying(false);
+      return;
+    }
+    const audio = new Audio(current.audioUrl);
+    audioRef.current = audio;
+    audio.onended = () => setTrackIndex((index) => (index + 1) % moodTracks.length);
+    audio.play().then(() => setIsPlaying(true)).catch(() => {
+      setIsPlaying(false);
+      setNotice('This track cannot autoplay. Press play to start it.');
+    });
+    return () => { audio.pause(); audio.onended = null; };
+  }, [current.audioUrl, embedUrl, moodTracks.length, setNotice]);
+  const togglePlayback = () => {
+    if (embedUrl) {
+      setNotice('Use the YouTube player controls to start or pause this track.');
+      return;
+    }
+    if (!current.audioUrl) {
+      setNotice('This track has no playable audio URL yet.');
+      return;
+    }
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) {
+      audio.play().then(() => setIsPlaying(true));
+    } else {
+      audio.pause();
+      setIsPlaying(false);
+    }
+  };
+  const nextTrack = () => { setTrackIndex((index) => (index + 1) % moodTracks.length); };
+  const previousTrack = () => { setTrackIndex((index) => (index - 1 + moodTracks.length) % moodTracks.length); };
+  const handleDownload = () => {
+    if (!isPremium) {
+      setNotice('Premium unlocks downloads. Upgrade to download this track.');
+      setLocation('/premium');
+      return;
+    }
+    onDownloadCurrentTrack(current.title, current.artist);
+    setNotice(`${current.title} saved to your downloaded songs.`);
+  };
   return (
     <section className="page" style={moodStyle(mood)}>
       <div className="mood-hero animate-rise">
@@ -469,8 +542,12 @@ function HomePage({ selectedMood, selectedPlaylist, setNotice }: { selectedMood:
           <h1>{mood.line}</h1>
           <p>{mood.description}</p>
           <div className="hero-links">
-            <button className="solid-button" onClick={() => setIsPlaying(!isPlaying)} data-testid="button-hero-play"><Play size={15} fill="currentColor" /> {isPlaying ? 'Playing now' : 'Play the room'}</button>
+            <button className="solid-button" onClick={togglePlayback} data-testid="button-hero-play"><Play size={15} fill="currentColor" /> {isPlaying ? 'Playing now' : 'Play the room'}</button>
             <button className="outline-button" onClick={() => document.getElementById('mood-player')?.scrollIntoView({ behavior: 'smooth' })} data-testid="button-scroll-player"><Volume2 size={15} /> See the needle</button>
+            <button className={`download-button ${isPremium ? 'premium' : 'locked'}`} onClick={handleDownload} data-testid="button-download-track">
+              {isPremium ? <Download size={15} /> : <Lock size={15} />}
+              {isPremium ? 'Download track' : 'Premium download'}
+            </button>
           </div>
         </div>
         <RecordCover mood={mood} label={selectedMood} />
@@ -480,6 +557,7 @@ function HomePage({ selectedMood, selectedPlaylist, setNotice }: { selectedMood:
           <div className="now-playing">
             <div><div className="eyebrow" style={{ color: mood.color }}>Now on the turntable</div><div className="track-title" data-testid="text-current-track">{current.title}</div><div className="track-artist">{current.artist}</div></div>
           </div>
+          {embedUrl && <iframe key={embedUrl} title={`Playing ${current.title}`} src={embedUrl} width="100%" height="152" style={{ border: 0, borderRadius: 8, marginTop: 18 }} allow="autoplay; encrypted-media; picture-in-picture" />}
           <div className="progress-wrap">
             <div className="wave-row" aria-hidden="true">{Array.from({ length: 34 }).map((_, index) => <span key={index} style={{ '--bar': `${.25 + ((index * 17) % 70) / 100}` } as CSSProperties} />)}</div>
             <div className="progress-line"><span style={{ background: mood.color }} /></div>
@@ -488,7 +566,7 @@ function HomePage({ selectedMood, selectedPlaylist, setNotice }: { selectedMood:
           <div className="player-controls">
             <button className="player-control" onClick={() => setNotice('Shuffle is on for this room.')} aria-label="Shuffle" data-testid="button-shuffle"><Shuffle size={18} /></button>
             <button className="player-control" onClick={previousTrack} aria-label="Previous track" data-testid="button-previous"><SkipBack size={20} /></button>
-            <button className="play-button" onClick={() => setIsPlaying(!isPlaying)} aria-label={isPlaying ? 'Pause' : 'Play'} data-testid="button-play-pause">{isPlaying ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}</button>
+            <button className="play-button" onClick={togglePlayback} aria-label={isPlaying ? 'Pause' : 'Play'} data-testid="button-play-pause">{isPlaying ? <Pause size={19} fill="currentColor" /> : <Play size={19} fill="currentColor" />}</button>
             <button className="player-control" onClick={nextTrack} aria-label="Next track" data-testid="button-next"><SkipForward size={20} /></button>
             <button className="player-control" onClick={() => setNotice('Volume is set for the room.')} aria-label="Volume" data-testid="button-volume"><Volume2 size={18} /></button>
           </div>
@@ -496,7 +574,7 @@ function HomePage({ selectedMood, selectedPlaylist, setNotice }: { selectedMood:
         <div className="queue-panel">
           <div className="panel-heading"><h3>Coming up</h3><span>{moodTracks.length} sides</span></div>
           <div className="queue-list">{moodTracks.map((track, index) => (
-            <button key={track.title} className={`queue-item ${track.title === current.title ? 'current' : ''}`} onClick={() => { setTrackIndex(index); setIsPlaying(true); }} data-testid={`button-queue-track-${index}`}>
+              <button key={track.title} className={`queue-item ${track.title === current.title ? 'current' : ''}`} onClick={() => { setTrackIndex(index); }} data-testid={`button-queue-track-${index}`}>
               <span className="queue-number">0{index + 1}</span><span><strong>{track.title}</strong><small>{track.artist}</small></span><span className="queue-duration">{track.duration}</span>
             </button>
           ))}</div>
@@ -666,69 +744,48 @@ function SearchPage({ library, selectMood, setNotice, addTrackToPlaylist }: { li
   );
 }
 
-function CustomThemePage({ selectedColor, setSelectedColor, setNotice }: { selectedColor: string | null; setSelectedColor: (color: string | null) => void; setNotice: (notice: string) => void }) {
-  const applyTheme = (color: string) => {
-    setSelectedColor(color);
-    window.localStorage.setItem('moodsic-custom-theme', color);
-    const theme = themePalette.find((option) => option.color === color);
-    setNotice(`Custom theme changed to ${theme?.name ?? color}.`);
-  };
-  const clearTheme = () => {
-    setSelectedColor(null);
-    window.localStorage.removeItem('moodsic-custom-theme');
-    setNotice('Back to the mood room background.');
-  };
-  return (
-    <section className="page custom-theme-page">
-      <div className="eyebrow animate-rise">Make the room yours / 005</div>
-      <div className="theme-heading animate-rise">
-        <div>
-          <h1 className="section-title">Custom <em>Theme</em></h1>
-          <p>Choose the background that matches how you feel right now. Your choice stays with you when you come back.</p>
-        </div>
-        <div className="theme-preview" style={{ background: selectedColor ?? '#090a12', color: readableTextColor(selectedColor ?? '#090a12') }} aria-label={selectedColor ? `Current custom theme ${selectedColor}` : 'Using the current mood background'}>
-          <span>{themePalette.find((option) => option.color === selectedColor)?.name ?? 'Mood room'}</span>
-        </div>
-      </div>
-      <div className="theme-palette animate-rise-2" aria-label="Custom background colors">
-        {themePalette.map(({ name, color }) => (
-          <button
-            key={color}
-            className={`theme-swatch ${selectedColor === color ? 'selected' : ''}`}
-            style={{ '--swatch': color } as CSSProperties}
-            onClick={() => applyTheme(color)}
-            aria-label={`Use ${name} as the background`}
-            aria-pressed={selectedColor === color}
-            data-testid={`button-theme-${color.slice(1)}`}
-          >
-            <span className="theme-swatch-dot" />
-            <span className="theme-swatch-copy"><strong>{name}</strong><small>{color}</small></span>
-            {selectedColor === color && <Check size={16} />}
-          </button>
-        ))}
-      </div>
-      <div className="theme-actions animate-rise-3">
-        <button className="outline-button small-button" onClick={clearTheme} disabled={!selectedColor} data-testid="button-reset-theme">Use mood background</button>
-        <span className="muted">{selectedColor ? 'Custom background active across your listening room.' : 'Pick a color to replace the default dark background.'}</span>
-      </div>
-    </section>
-  );
-}
-
-function ProfilePage({ authUser, setNotice, onSignOut }: { authUser: AuthUser; setNotice: (notice: string) => void; onSignOut: () => void }) {
+function ProfilePage({ authUser, setNotice, onSignOut, isPremium, downloadedSongs }: { authUser: AuthUser; setNotice: (notice: string) => void; onSignOut: () => void; isPremium: boolean; downloadedSongs: DownloadedSong[] }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(authUser.name);
   const save = () => { setEditing(false); setNotice('Your profile note has been updated.'); };
   return (
     <section className="page">
       <div className="eyebrow animate-rise">Your listening log / 006</div>
-      <div className="profile-layout" style={{ marginTop: 27 }}>
+      <>
+        <div className="profile-layout" style={{ marginTop: 27 }}>
         <div className="profile-panel animate-rise-2">
           <div className="profile-avatar">{avatarInitial(authUser)}</div>
           {editing ? <div className="edit-form"><label htmlFor="profile-name">Name</label><input id="profile-name" value={name} onChange={(event) => setName(event.target.value)} data-testid="input-profile-name" /><label htmlFor="profile-note">Currently into</label><input id="profile-note" defaultValue="Slow records and late walks" data-testid="input-profile-note" /><div style={{ display: 'flex', gap: 8, marginTop: 7 }}><button className="solid-button small-button" onClick={save} data-testid="button-save-profile">Save changes</button><button className="outline-button small-button" onClick={() => setEditing(false)} data-testid="button-cancel-profile">Cancel</button></div></div> : <><h1>{authUser.username}</h1><p>{name} · Listening from a small room with the window open.</p><div className="profile-actions"><button className="outline-button small-button" onClick={() => setEditing(true)} data-testid="button-edit-profile"><Pencil size={14} /> Edit profile</button><button className="sign-out-button" onClick={onSignOut} data-testid="button-sign-out"><LogOut size={14} /> Sign out</button></div></>}
+          <div className="premium-status-row">
+            <span className={`premium-chip ${isPremium ? 'premium' : 'free'}`}>
+              {isPremium ? <Crown size={14} /> : <Lock size={14} />}
+              {isPremium ? 'Premium member' : 'Free plan'}
+            </span>
+          </div>
         </div>
-        <div className="summary-panel animate-rise-3"><h2>February, in records</h2><div className="stat-grid"><div className="stat"><b>38</b><span>hours listened</span></div><div className="stat"><b>117</b><span>records visited</span></div><div className="stat"><b>24</b><span>favorite tracks</span></div></div><div className="taste-list"><div className="eyebrow">Your current rotation</div>{[['Happy', 76, '#f1bc46'], ['Neutral', 58, '#5e08aa'], ['Sad', 42, '#0c0d88']].map(([label, value, color]) => <div className="taste-line" key={label as string}><span>{label as string}</span><div className="taste-bar" style={{ '--taste': color as string } as CSSProperties}><span style={{ width: `${value}%` }} /></div><span>{value as number}%</span></div>)}</div></div>
-      </div>
+        <div className="summary-panel animate-rise-3">
+          <h2>February, in records</h2>
+          <div className="stat-grid">
+            <div className="stat"><b>38</b><span>hours listened</span></div>
+            <div className="stat"><b>117</b><span>records visited</span></div>
+            <div className="stat"><b>24</b><span>favorite tracks</span></div>
+          </div>
+          <div className="taste-list">
+            <div className="eyebrow">Your current rotation</div>
+            {[['Happy', 76, '#f1bc46'], ['Neutral', 58, '#5e08aa'], ['Sad', 42, '#0c0d88']].map(([label, value, color]) => (
+              <div className="taste-line" key={label as string}>
+                <span>{label as string}</span>
+                <div className="taste-bar" style={{ '--taste': color as string } as CSSProperties}>
+                  <span style={{ width: `${value}%` }} />
+                </div>
+                <span>{value as number}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        </div>
+        <Downloads isPremium={isPremium} downloadedSongs={downloadedSongs} />
+      </>
       <div className="hairline" style={{ marginTop: 28 }} />
       <div style={{ marginTop: 18, display: 'flex', justifyContent: 'space-between', color: '#8c8893', fontSize: 14 }}><span>Member since the first needle drop</span><Music2 size={17} color="#f1bc46" /></div>
     </section>
@@ -749,9 +806,20 @@ function Router({
   const [location, setLocation] = useLocation();
   const [selectedMood, setSelectedMood] = useState<MoodName>('Neutral');
   const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
-  const [library, setLibrary] = useState<Playlist[]>(playlists);
-  const [deleted, setDeleted] = useState<string[]>([]);
+  const [library, setLibrary] = useState<Playlist[]>(() => {
+    const stored = window.localStorage.getItem('moodsic-playlists');
+    if (!stored) return playlists;
+    try { return JSON.parse(stored) as Playlist[]; } catch { return playlists; }
+  });
+  const [deleted, setDeleted] = useState<string[]>(() => {
+    const stored = window.localStorage.getItem('moodsic-deleted-playlists');
+    if (!stored) return [];
+    try { return JSON.parse(stored) as string[]; } catch { return []; }
+  });
+  const [, setCatalogVersion] = useState(0);
   const [notice, setNotice] = useState('');
+  const [isPremium, setIsPremium] = useState(false);
+  const [downloadedSongs, setDownloadedSongs] = useState<DownloadedSong[]>([]);
   const [customTheme, setCustomTheme] = useState<string | null>(() => window.localStorage.getItem('moodsic-custom-theme'));
   const selectMood = (mood: MoodName) => { setSelectedMood(mood); setSelectedPlaylist(null); setLocation('/choose-playlist'); };
   const choosePlaylist = (playlist: Playlist) => { setSelectedPlaylist(playlist); setLocation('/home'); };
@@ -767,6 +835,21 @@ function Router({
       ? { ...playlist, trackTitles: [...playlist.trackTitles, trackTitle], count: playlist.trackTitles.length + 1 }
       : playlist));
   };
+  useEffect(() => {
+    let active = true;
+    api.apiFetch<BackendSong[]>('/songs?limit=200')
+      .then((songs) => {
+        if (!active || songs.length === 0) return;
+        tracks = songs.map(trackFromDatabase);
+        setCatalogVersion((version) => version + 1);
+      })
+      .catch(() => {
+        // Keep the bundled catalog available when the database is offline.
+      });
+    return () => { active = false; };
+  }, [authUser]);
+  useEffect(() => { window.localStorage.setItem('moodsic-playlists', JSON.stringify(library)); }, [library]);
+  useEffect(() => { window.localStorage.setItem('moodsic-deleted-playlists', JSON.stringify(deleted)); }, [deleted]);
   return (
     <AuthGate authUser={authUser} setAuthUser={setAuthUser} authMode={authMode} setAuthMode={setAuthMode}>
       <Shell
@@ -778,12 +861,13 @@ function Router({
           <Switch>
             <Route path="/"><MoodPicker selectMood={selectMood} /></Route>
             <Route path="/choose-playlist"><PlaylistChoicePage moodName={selectedMood} library={library} deleted={deleted} choosePlaylist={choosePlaylist} /></Route>
-            <Route path="/home"><HomePage selectedMood={selectedMood} selectedPlaylist={selectedPlaylist} setNotice={setNotice} /></Route>
+            <Route path="/home"><HomePage selectedMood={selectedMood} selectedPlaylist={selectedPlaylist} setNotice={setNotice} isPremium={isPremium} onDownloadCurrentTrack={(title, artist) => setDownloadedSongs((current) => current.some((item) => item.title === title) ? current : [{ title, artist, date: new Date().toLocaleDateString() }, ...current])} /></Route>
             <Route path="/playlists"><PlaylistsPage library={library} selectMood={selectMood} setNotice={setNotice} deleted={deleted} setDeleted={setDeleted} onCreate={(playlist) => setLibrary((current) => [playlist, ...current])} /></Route>
             <Route path="/restore"><RestorePage library={library} deleted={deleted} setDeleted={setDeleted} setNotice={setNotice} /></Route>
             <Route path="/search"><SearchPage library={library} selectMood={selectMood} setNotice={setNotice} addTrackToPlaylist={addTrackToPlaylist} /></Route>
-            <Route path="/theme"><CustomThemePage selectedColor={customTheme} setSelectedColor={setCustomTheme} setNotice={setNotice} /></Route>
-            <Route path="/profile"><ProfilePage authUser={authUser as AuthUser} setNotice={setNotice} onSignOut={signOut} /></Route>
+            <Route path="/premium"><PremiumPage isPremium={isPremium} onUpgrade={() => { setIsPremium(true); setNotice('Premium unlocked. Your profile and room now reflect the premium plan.'); }} /></Route>
+            <Route path="/theme"><Themes selectedColor={customTheme} setSelectedColor={setCustomTheme} setNotice={setNotice} isPremium={isPremium} themePalette={themePalette} /></Route>
+            <Route path="/profile"><ProfilePage authUser={authUser as AuthUser} setNotice={setNotice} onSignOut={signOut} isPremium={isPremium} downloadedSongs={downloadedSongs} /></Route>
             <Route><NotFound /></Route>
           </Switch>
         </ErrorBoundary>
