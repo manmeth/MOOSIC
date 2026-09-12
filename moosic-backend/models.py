@@ -83,6 +83,11 @@ class Song(Base):
     audio_url = Column(String, nullable=True)
     cover_url = Column(String, nullable=True)
 
+    # Set by scripts/verify_and_fix_audio_urls.py or scripts/health_check_audio_urls.py.
+    # NULL = never checked yet, True/False = result of the last oEmbed check.
+    is_playable = Column(Boolean, nullable=True, default=None)
+    audio_checked_at = Column(DateTime, nullable=True)
+
     artist = relationship("Artist", back_populates="songs")
     album = relationship("Album", back_populates="songs")
 

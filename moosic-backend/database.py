@@ -131,6 +131,12 @@ def ensure_compatibility_columns():
         if "mood" not in columns:
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE songs ADD COLUMN mood VARCHAR"))
+        if "is_playable" not in columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE songs ADD COLUMN is_playable BOOLEAN"))
+        if "audio_checked_at" not in columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE songs ADD COLUMN audio_checked_at DATETIME"))
 
 
 def create_tables():

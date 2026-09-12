@@ -1,0 +1,82 @@
+diff --git a/moosic-backend/database.py b/moosic-backend/database.py
+index 81cc90d..e40b986 100644
+--- a/moosic-backend/database.py
++++ b/moosic-backend/database.py
+@@ -134,6 +134,12 @@ def ensure_compatibility_columns():
+         if "mood" not in columns:
+             with engine.begin() as connection:
+                 connection.execute(text("ALTER TABLE songs ADD COLUMN mood VARCHAR"))
++        if "is_playable" not in columns:
++            with engine.begin() as connection:
++                connection.execute(text("ALTER TABLE songs ADD COLUMN is_playable BOOLEAN"))
++        if "audio_checked_at" not in columns:
++            with engine.begin() as connection:
++                connection.execute(text("ALTER TABLE songs ADD COLUMN audio_checked_at DATETIME"))
+ 
+ 
+ def create_tables():
+diff --git a/moosic-backend/main.py b/moosic-backend/main.py
+index 4511227..2d432e7 100644
+--- a/moosic-backend/main.py
++++ b/moosic-backend/main.py
+@@ -185,11 +185,13 @@ def seed_mood_songs():
+ 
+         for mood, titles in mood_songs.items():
+             for title in titles:
+-                audio_url = f"https://www.youtube.com/embed?listType=search&list={quote_plus(title + ' Hindi song')}"
++                # NOTE: audio_url is intentionally left unset here. A generated
++                # "listType=search" embed URL is not a specific video and YouTube
++                # doesn't reliably serve it in an iframe, so songs seeded that way
++                # never actually play. Run scripts/verify_and_fix_audio_urls.py
++                # after seeding to resolve each title to a real, checked video id.
+                 existing_song = db.query(models.Song).filter(models.Song.title == title).first()
+                 if existing_song:
+-                    if not existing_song.audio_url:
+-                        existing_song.audio_url = audio_url
+                     continue
+                 db.add(models.Song(
+                     title=title,
+@@ -199,7 +201,8 @@ def seed_mood_songs():
+                     mood=mood,
+                     language="Hindi",
+                     duration=None,
+-                    audio_url=audio_url,
++                    audio_url=None,
++                    is_playable=None,
+                     cover_url=album.cover_url,
+                 ))
+         db.commit()
+@@ -1082,7 +1085,7 @@ def get_song_detail(song_id: int, db: Session = Depends(get_db)):
+             detail=f"Song with id {song_id} not found",
+         )
+     payload = serialize_song(song)
+-    payload["is_playable"] = bool(song.audio_url)
++    payload["is_playable"] = song.is_playable if song.is_playable is not None else bool(song.audio_url)
+     return payload
+ 
+ 
+@@ -1105,7 +1108,7 @@ def get_song_playback(song_id: int, db: Session = Depends(get_db)):
+         "duration": song.duration,
+         "audio_url": song.audio_url,
+         "cover_url": song.cover_url,
+-        "is_playable": bool(song.audio_url),
++        "is_playable": song.is_playable if song.is_playable is not None else bool(song.audio_url),
+     }
+ 
+ 
+diff --git a/moosic-backend/models.py b/moosic-backend/models.py
+index dcc6b20..838d173 100644
+--- a/moosic-backend/models.py
++++ b/moosic-backend/models.py
+@@ -99,6 +99,11 @@ class Song(Base):
+     audio_url = Column(String, nullable=True)
+     cover_url = Column(String, nullable=True)
+ 
++    # Set by scripts/verify_and_fix_audio_urls.py or scripts/health_check_audio_urls.py.
++    # NULL = never checked yet, True/False = result of the last oEmbed check.
++    is_playable = Column(Boolean, nullable=True, default=None)
++    audio_checked_at = Column(DateTime, nullable=True)
++
+     artist = relationship("Artist", back_populates="songs")
+     album = relationship("Album", back_populates="songs")
+ 

@@ -177,11 +177,13 @@ def seed_mood_songs():
 
         for mood, titles in mood_songs.items():
             for title in titles:
-                audio_url = f"https://www.youtube.com/embed?listType=search&list={quote_plus(title + ' Hindi song')}"
+                # NOTE: audio_url is intentionally left unset here. A generated
+                # "listType=search" embed URL is not a specific video and YouTube
+                # doesn't reliably serve it in an iframe, so songs seeded that way
+                # never actually play. Run scripts/verify_and_fix_audio_urls.py
+                # after seeding to resolve each title to a real, checked video id.
                 existing_song = db.query(models.Song).filter(models.Song.title == title).first()
                 if existing_song:
-                    if not existing_song.audio_url:
-                        existing_song.audio_url = audio_url
                     continue
                 db.add(models.Song(
                     title=title,
@@ -191,7 +193,8 @@ def seed_mood_songs():
                     mood=mood,
                     language="Hindi",
                     duration=None,
-                    audio_url=audio_url,
+                    audio_url=None,
+                    is_playable=None,
                     cover_url=album.cover_url,
                 ))
         db.commit()
@@ -986,7 +989,7 @@ def get_song_detail(song_id: int, db: Session = Depends(get_db)):
             detail=f"Song with id {song_id} not found",
         )
     payload = serialize_song(song)
-    payload["is_playable"] = bool(song.audio_url)
+    payload["is_playable"] = song.is_playable if song.is_playable is not None else bool(song.audio_url)
     return payload
 
 
@@ -1009,7 +1012,7 @@ def get_song_playback(song_id: int, db: Session = Depends(get_db)):
         "duration": song.duration,
         "audio_url": song.audio_url,
         "cover_url": song.cover_url,
-        "is_playable": bool(song.audio_url),
+        "is_playable": song.is_playable if song.is_playable is not None else bool(song.audio_url),
     }
 
 
