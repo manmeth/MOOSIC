@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 import main
 import models
+import firewall
 from database import SessionLocal
 
 client = TestClient(main.app)
@@ -16,6 +17,8 @@ def setup_function():
         db.query(models.Playlist).delete()
         db.query(models.ListeningHistory).delete()
         db.query(models.LikedSong).delete()
+        db.query(models.Download).delete()
+        db.query(models.Payment).delete()
         db.query(models.QueueItem).delete()
         db.query(models.PlaybackState).delete()
         db.query(models.Song).delete()
@@ -25,6 +28,8 @@ def setup_function():
         db.commit()
     finally:
         db.close()
+    # Clear firewall rate limiting history to avoid 429 in tests
+    firewall.request_history.clear()
 
 
 def test_rank_songs_by_mood_prioritizes_user_preferences():
@@ -145,3 +150,139 @@ def test_manager_role_dependency_allows_manager_and_rejects_user():
         headers={"Authorization": f"Bearer {normal_token}"},
     )
     assert normal_access.status_code == 403
+
+
+def test_manager_dashboard_and_permissions():
+    # create normal user
+    normal_user = client.post("/users", json={
+        "name": "Normal",
+        "username": "normal_manager_user",
+        "email": "normal_manager_user@example.com",
+        "password": "StrongPass123",
+    })
+    assert normal_user.status_code == 200
+    normal_token = normal_user.json()["token"]
+
+    # create manager
+    manager = client.post("/manager/register", json={
+        "name": "Manager",
+        "username": "manager_user",
+        "email": "manager_user@example.com",
+        "password": "StrongPass123",
+        "registration_code": "manager-access-code",
+    })
+    assert manager.status_code == 200
+    manager_token = manager.json()["token"]
+
+    # manager dashboard accessible
+    m_dash = client.get("/manager/dashboard", headers={"Authorization": f"Bearer {manager_token}"})
+    assert m_dash.status_code == 200
+
+    # normal user forbidden
+    normal_dash = client.get("/manager/dashboard", headers={"Authorization": f"Bearer {normal_token}"})
+    assert normal_dash.status_code == 403
+
+    # unauthenticated -> 401
+    anon_dash = client.get("/manager/dashboard")
+    assert anon_dash.status_code == 401
+
+
+def test_manager_users_and_user_patch():
+    # create manager
+    manager = client.post("/manager/register", json={
+        "name": "Manager2",
+        "username": "manager_user2",
+        "email": "manager_user2@example.com",
+        "password": "StrongPass123",
+        "registration_code": "manager-access-code",
+    })
+    manager_token = manager.json()["token"]
+
+    # create some users
+    u1 = client.post("/users", json={"name": "U1", "username": "u1", "email": "u1@example.com", "password": "StrongPass123"})
+    u2 = client.post("/users", json={"name": "U2", "username": "u2", "email": "u2@example.com", "password": "StrongPass123"})
+    assert u1.status_code == 200 and u2.status_code == 200
+
+    users_resp = client.get("/manager/users", headers={"Authorization": f"Bearer {manager_token}"})
+    assert users_resp.status_code == 200
+    users = users_resp.json().get("users", [])
+    assert any(u["username"] == "u1" for u in users)
+
+    # normal user cannot access
+    normal = client.post("/users", json={"name": "Normal2", "username": "normal2", "email": "normal2@example.com", "password": "StrongPass123"})
+    normal_token = normal.json()["token"]
+    forbidden = client.get("/manager/users", headers={"Authorization": f"Bearer {normal_token}"})
+    assert forbidden.status_code == 403
+
+    # patch a user (change name and premium)
+    target_id = u1.json()["user"]["user_id"]
+    # Use PUT because the firewall blocks PATCH in this environment
+    patch_resp = client.put(f"/manager/users/{target_id}", json={"name": "U1 Renamed", "is_premium": True}, headers={"Authorization": f"Bearer {manager_token}"})
+    assert patch_resp.status_code == 200
+    assert patch_resp.json()["user"]["name"] == "U1 Renamed"
+
+
+def test_manager_song_crud_and_permissions():
+    # prepare manager
+    manager = client.post("/manager/register", json={
+        "name": "Manager3",
+        "username": "manager_user3",
+        "email": "manager_user3@example.com",
+        "password": "StrongPass123",
+        "registration_code": "manager-access-code",
+    })
+    manager_token = manager.json()["token"]
+
+    # create artist and album (public endpoints)
+    artist = client.post("/artists", json={"name": "Mgmt Artist", "image_url": ""})
+    assert artist.status_code == 200
+    artist_id = artist.json()["artist_id"]
+    album = client.post("/albums", json={"title": "Mgmt Album", "artist_id": artist_id, "release_date": "2026-01-01", "cover_url": ""})
+    assert album.status_code == 200
+    album_id = album.json()["album_id"]
+
+    # manager creates a song
+    create = client.post("/manager/songs", json={"title": "Mgmt Song", "artist_id": artist_id, "album_id": album_id, "genre": "Pop"}, headers={"Authorization": f"Bearer {manager_token}"})
+    assert create.status_code == 200
+    song_id = create.json()["song_id"]
+
+    # manager updates song
+    upd = client.put(f"/manager/songs/{song_id}", json={"title": "Mgmt Song Edited", "genre": "Rock"}, headers={"Authorization": f"Bearer {manager_token}"})
+    assert upd.status_code == 200
+
+    # normal user cannot create song
+    normal = client.post("/users", json={"name": "Normal3", "username": "normal3", "email": "normal3@example.com", "password": "StrongPass123"})
+    normal_token = normal.json()["token"]
+    forbidden_create = client.post("/manager/songs", json={"title": "Bad Song", "artist_id": artist_id}, headers={"Authorization": f"Bearer {normal_token}"})
+    assert forbidden_create.status_code == 403
+
+    # manager deletes song
+    delr = client.delete(f"/manager/songs/{song_id}", headers={"Authorization": f"Bearer {manager_token}"})
+    assert delr.status_code == 200
+
+
+def test_manager_payments_view_permissions():
+    # create user and subscribe
+    user = client.post("/users", json={"name": "PayUser", "username": "payuser", "email": "pay@example.com", "password": "StrongPass123"})
+    token = user.json()["token"]
+    resp = client.post("/premium/subscribe", json={"plan": "premium", "payment_method": "test_success"}, headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+
+    # manager can view payments
+    manager = client.post("/manager/register", json={
+        "name": "Manager4",
+        "username": "manager_user4",
+        "email": "manager_user4@example.com",
+        "password": "StrongPass123",
+        "registration_code": "manager-access-code",
+    })
+    manager_token = manager.json()["token"]
+    payments = client.get("/manager/payments", headers={"Authorization": f"Bearer {manager_token}"})
+    assert payments.status_code == 200
+    assert any(p["user_email"] == "pay@example.com" for p in payments.json().get("payments", []))
+
+    # normal user cannot view
+    normal = client.post("/users", json={"name": "Normal4", "username": "normal4", "email": "normal4@example.com", "password": "StrongPass123"})
+    normal_token = normal.json()["token"]
+    forbidden = client.get("/manager/payments", headers={"Authorization": f"Bearer {normal_token}"})
+    assert forbidden.status_code == 403

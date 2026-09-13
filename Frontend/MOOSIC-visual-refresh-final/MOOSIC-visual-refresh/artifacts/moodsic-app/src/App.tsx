@@ -35,6 +35,29 @@ type AuthApiResponse = {
 };
 type Playlist = { id: string; name: string; mood: MoodName; count: number; description: string; trackTitles: string[]; isCustom?: boolean };
 type AuthUser = { id: string; email: string; name: string; username: string; role: string };
+type ManagerDashboardData = {
+  manager: { user_id: number; name: string; role: string };
+  kpis: {
+    total_users: number;
+    premium_users: number;
+    total_songs: number;
+    total_artists: number;
+    total_albums: number;
+    successful_payments: number;
+    total_revenue: number;
+  };
+};
+type ManagerUser = { id: number; name: string; username: string; email: string; role: string; is_premium: boolean };
+type ManagerPayment = { id: number; user_id: number; plan: string; amount: number; currency: string; status: string; payment_date: string };
+
+// Manager endpoints return named objects (for example { users: [...] }), while
+// some catalog endpoints return arrays. Normalize both shapes for the UI.
+function managerList<T>(payload: T[] | Record<string, unknown>, key: string): T[] {
+  if (Array.isArray(payload)) return payload;
+  const value = payload?.[key];
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
 type AuthMode = 'login' | 'signup';
 const moods: Mood[] = [
   { name: 'Sad', color: '#0c0d88', background: '#313ca8', text: '#f7efcd', line: 'Let the blue stay awhile.', description: 'A soft landing for the feelings that have nowhere else to go.', art: sadMoodArt },
@@ -403,7 +426,7 @@ function Brand() {
   );
 }
 
-function Navigation({ mobile = false }: { mobile?: boolean }) {
+function Navigation({ mobile = false, authUser }: { mobile?: boolean; authUser?: AuthUser | null }) {
   const [location] = useLocation();
   const items = [
     { href: '/home', label: 'Now playing', icon: HomeIcon },
@@ -413,6 +436,7 @@ function Navigation({ mobile = false }: { mobile?: boolean }) {
     { href: '/premium', label: 'Premium', icon: Crown },
     { href: '/theme', label: 'Custom Theme', icon: Palette },
     { href: '/profile', label: 'Profile', icon: UserRound },
+    ...(authUser?.role === 'manager' ? [{ href: '/manager', label: 'Manager', icon: Crown }] : []),
   ];
   return (
     <nav className={mobile ? 'mobile-nav' : 'nav-stack'} aria-label="Main navigation">
@@ -436,7 +460,7 @@ function Shell({ children, authUser, appBackground }: { children: ReactNode; aut
       <div className="shell-grid">
         <aside className={`side-rail ${isPicker ? 'picker-hidden-rail' : ''}`}>
           <Brand />
-          <Navigation />
+          <Navigation authUser={authUser} />
           <div className="rail-note"><strong>Tonight's note</strong>Music works better when you tell it the truth.</div>
         </aside>
         <main className="main-column">
@@ -465,7 +489,7 @@ function Shell({ children, authUser, appBackground }: { children: ReactNode; aut
           {children}
         </main>
       </div>
-      {!isPicker && <Navigation mobile />}
+      {!isPicker && <Navigation mobile authUser={authUser} />}
     </div>
   );
 }
@@ -534,13 +558,15 @@ function RecordCover({ mood, label = 'MOOSIC' }: { mood: Mood; label?: string })
 }
 
 function HomePage({ selectedMood, selectedPlaylist, setNotice, isPremium, onDownloadCurrentTrack }: { selectedMood: MoodName; selectedPlaylist: Playlist | null; setNotice: (notice: string) => void; isPremium: boolean; onDownloadCurrentTrack: (songId: number) => Promise<void> }) {
-  const [isPlaying, setIsPlaying] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [trackIndex, setTrackIndex] = useState(0);
   const [progress, setProgress] = useState({ currentTime: 0, duration: 0 });
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ytPlayerRef = useRef<any>(null);
   const ytContainerRef = useRef<HTMLDivElement | null>(null);
   const activeKindRef = useRef<'audio' | 'youtube' | 'none'>('none');
+  const ytReadyRef = useRef(false);
+  const pendingYoutubePlayRef = useRef(false);
   const [, setLocation] = useLocation();
   const mood = moodFor(selectedMood);
   const moodTracks = selectedPlaylist
@@ -562,6 +588,8 @@ function HomePage({ selectedMood, selectedPlaylist, setNotice, isPremium, onDown
 
     if (videoId) {
       activeKindRef.current = 'youtube';
+      ytReadyRef.current = false;
+      setIsPlaying(false);
       loadYoutubeIframeApi().then((YT) => {
         if (cancelled || !ytContainerRef.current) return;
         if (ytPlayerRef.current) {
@@ -570,10 +598,14 @@ function HomePage({ selectedMood, selectedPlaylist, setNotice, isPremium, onDown
         }
         ytPlayerRef.current = new YT.Player(ytContainerRef.current, {
           videoId,
-          playerVars: { autoplay: 1, controls: 0, disablekb: 1, playsinline: 1 },
+          playerVars: { autoplay: 0, controls: 0, disablekb: 1, playsinline: 1, rel: 0, modestbranding: 1 },
           events: {
             onReady: (event: any) => {
-              event.target.playVideo();
+              ytReadyRef.current = true;
+              if (pendingYoutubePlayRef.current) {
+                pendingYoutubePlayRef.current = false;
+                event.target.playVideo();
+              }
             },
             onStateChange: (event: any) => {
               if (event.data === YT.PlayerState.PLAYING) setIsPlaying(true);
@@ -582,6 +614,11 @@ function HomePage({ selectedMood, selectedPlaylist, setNotice, isPremium, onDown
             },
           },
         });
+      }).catch(() => {
+        if (!cancelled) {
+          setIsPlaying(false);
+          setNotice('Unable to load this track right now.');
+        }
       });
       return () => { cancelled = true; };
     }
@@ -630,9 +667,19 @@ function HomePage({ selectedMood, selectedPlaylist, setNotice, isPremium, onDown
   }, []);
 
   const togglePlayback = () => {
-    if (activeKindRef.current === 'youtube' && ytPlayerRef.current) {
+    if (activeKindRef.current === 'youtube') {
+      if (!ytPlayerRef.current || !ytReadyRef.current) {
+        pendingYoutubePlayRef.current = true;
+        setNotice('Loading the track…');
+        return;
+      }
       const state = ytPlayerRef.current.getPlayerState?.();
-      if (state === 1) { ytPlayerRef.current.pauseVideo(); } else { ytPlayerRef.current.playVideo(); }
+      if (state === 1) {
+        ytPlayerRef.current.pauseVideo();
+      } else {
+        pendingYoutubePlayRef.current = false;
+        ytPlayerRef.current.playVideo();
+      }
       return;
     }
     if (activeKindRef.current === 'audio' && audioRef.current) {
@@ -682,7 +729,7 @@ function HomePage({ selectedMood, selectedPlaylist, setNotice, isPremium, onDown
   return (
     <section className="page" style={moodStyle(mood)}>
       {/* Hidden YouTube player: audio-only, no visible video/branding/suggestions. */}
-      <div ref={ytContainerRef} style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none', overflow: 'hidden' }} />
+      <div ref={ytContainerRef} aria-hidden="true" style={{ position: 'fixed', left: '-10000px', top: '-10000px', width: '2px', height: '2px', opacity: 0, pointerEvents: 'none', overflow: 'hidden' }} />
       <div className="mood-hero animate-rise">
         <div className="hero-copy">
           <div className="eyebrow">Your room tonight / {selectedMood} / {selectedPlaylist?.name ?? 'Mood mix'}</div>
@@ -947,6 +994,208 @@ function ProfilePage({ authUser, setNotice, onSignOut, isPremium, downloadedSong
   );
 }
 
+
+function ManagerDashboardPage() {
+  const [data, setData] = useState<ManagerDashboardData | null>(null);
+  const [message, setMessage] = useState('');
+  useEffect(() => {
+    api.apiFetch<ManagerDashboardData>('/manager/dashboard')
+      .then(setData)
+      .catch((error) => setMessage(error instanceof Error ? error.message : 'Unable to load manager dashboard.'));
+  }, []);
+  if (message) return <section className="page"><div className="empty-state"><h2>Manager dashboard unavailable.</h2><p>{message}</p></div></section>;
+  if (!data) return <section className="page"><div className="empty-state"><h2>Loading manager dashboard…</h2></div></section>;
+  const cards = [
+    ['Users', data.kpis.total_users],
+    ['Premium users', data.kpis.premium_users],
+    ['Songs', data.kpis.total_songs],
+    ['Artists', data.kpis.total_artists],
+    ['Albums', data.kpis.total_albums],
+    ['Successful payments', data.kpis.successful_payments],
+    ['Revenue', `€${Number(data.kpis.total_revenue).toFixed(2)}`],
+  ];
+  return (
+    <section className="page">
+      <div className="page-heading animate-rise">
+        <div><div className="eyebrow">Manager / 001</div><h1>Business<br /><em>dashboard.</em></h1></div>
+      </div>
+      <p className="muted">Signed in as {data.manager.name} · {data.manager.role}</p>
+      <div className="stat-grid animate-rise-2" style={{ marginTop: 24 }}>
+        {cards.map(([label, value]) => <div className="stat" key={String(label)}><b>{String(value)}</b><span>{label}</span></div>)}
+      </div>
+      <div className="hairline" style={{ margin: '30px 0 18px' }} />
+      <p className="muted">Use the Manager navigation to manage users, songs, and payment records.</p>
+    </section>
+  );
+}
+
+function ManagerUsersPage() {
+  const [users, setUsers] = useState<ManagerUser[]>([]);
+  const [message, setMessage] = useState('');
+  const load = () => api.apiFetch<ManagerUser[] | Record<string, unknown>>('/manager/users').then((payload) => setUsers(managerList<ManagerUser>(payload, 'users'))).catch((error) => setMessage(error instanceof Error ? error.message : 'Unable to load users.'));
+  useEffect(() => { void load(); }, []);
+  const togglePremium = async (user: ManagerUser) => {
+    try {
+      const updated = await api.apiFetch<ManagerUser>(`/manager/users/${user.id}`, {
+        method: 'PUT',
+        body: { is_premium: !user.is_premium },
+      });
+      setUsers((current) => current.map((item) => item.id === user.id ? updated : item));
+      setMessage(`${user.username} is now ${updated.is_premium ? 'Premium' : 'Free'}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to update user.');
+    }
+  };
+  return (
+    <section className="page">
+      <div className="eyebrow">Manager / 002</div>
+      <h1 className="section-title" style={{ margin: '15px 0 22px' }}>User<br /><em>management.</em></h1>
+      {message && <p className="muted">{message}</p>}
+      <div className="library-grid">
+        {users.map((user) => (
+          <article className="library-card" key={user.id}>
+            <div className="cover-meta">
+              <div><h2>{user.name || user.username}</h2><p>{user.email}</p><p>{user.role} · {user.is_premium ? 'Premium' : 'Free'}</p></div>
+              <UserRound size={18} />
+            </div>
+            <div className="card-actions">
+              {user.id > 0 && <button className="solid-button small-button" onClick={() => void togglePremium(user)}>
+                {user.is_premium ? 'Set Free' : 'Grant Premium'}
+              </button>}
+            </div>
+          </article>
+        ))}
+      </div>
+      {users.length === 0 && !message && <div className="empty-state"><h2>No users found.</h2></div>}
+    </section>
+  );
+}
+
+function ManagerSongsPage() {
+  const [songs, setSongs] = useState<BackendSong[]>([]);
+  const [message, setMessage] = useState('');
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [title, setTitle] = useState('');
+  const [mood, setMood] = useState<MoodName>('Neutral');
+  const load = () => api.apiFetch<BackendSong[] | Record<string, unknown>>('/songs?limit=200').then((payload) => setSongs(managerList<BackendSong>(payload, 'songs'))).catch((error) => setMessage(error instanceof Error ? error.message : 'Unable to load songs.'));
+  useEffect(() => { void load(); }, []);
+  const beginEdit = (song: BackendSong) => {
+    if (typeof song.id !== 'number') return;
+    setEditingId(song.id);
+    setTitle(song.title);
+    setMood((moods.some((item) => item.name === song.mood) ? song.mood : 'Neutral') as MoodName);
+    setMessage('');
+  };
+  const saveEdit = async (song: BackendSong) => {
+    if (typeof song.id !== 'number') return;
+    try {
+      const updated = await api.apiFetch<BackendSong>(`/manager/songs/${song.id}`, {
+        method: 'PUT',
+        body: { title: title.trim() || song.title, mood },
+      });
+      setSongs((current) => current.map((item) => item.id === song.id ? { ...item, ...updated } : item));
+      setEditingId(null);
+      setMessage(`Updated ${updated.title ?? song.title}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to update song.');
+    }
+  };
+  const removeSong = async (song: BackendSong) => {
+    if (typeof song.id !== 'number') return;
+    if (!window.confirm(`Delete "${song.title}"?`)) return;
+    try {
+      await api.apiFetch(`/manager/songs/${song.id}`, { method: 'DELETE' });
+      setSongs((current) => current.filter((item) => item.id !== song.id));
+      setMessage(`${song.title} deleted.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to delete song.');
+    }
+  };
+  return (
+    <section className="page">
+      <div className="eyebrow">Manager / 003</div>
+      <h1 className="section-title" style={{ margin: '15px 0 22px' }}>Song<br /><em>management.</em></h1>
+      {message && <p className="muted">{message}</p>}
+      <div className="result-section">
+        {songs.map((song) => (
+          <div className="result-row" key={song.id ?? song.title}>
+            {editingId === song.id ? (
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1, flexWrap: 'wrap' }}>
+                <input className="builder-input" value={title} onChange={(event) => setTitle(event.target.value)} style={{ flex: 1, minWidth: 220 }} />
+                <select className="builder-input" value={mood} onChange={(event) => setMood(event.target.value as MoodName)}>
+                  {moods.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
+                </select>
+                <button className="solid-button small-button" onClick={() => void saveEdit(song)}>Save</button>
+                <button className="outline-button small-button" onClick={() => setEditingId(null)}>Cancel</button>
+              </div>
+            ) : (
+              <>
+                <div className="result-row-main"><strong>{song.title}</strong><small>{song.artist_name ?? 'Unknown artist'} / {song.mood ?? 'Neutral'}</small></div>
+                <div className="result-row-actions">
+                  <button className="icon-button" onClick={() => beginEdit(song)} aria-label={`Edit ${song.title}`}><Pencil size={14} /></button>
+                  <button className="icon-button" onClick={() => void removeSong(song)} aria-label={`Delete ${song.title}`}><Trash2 size={14} /></button>
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ManagerPaymentsPage() {
+  const [payments, setPayments] = useState<ManagerPayment[]>([]);
+  const [message, setMessage] = useState('');
+  useEffect(() => {
+    api.apiFetch<ManagerPayment[] | Record<string, unknown>>('/manager/payments')
+      .then((payload) => setPayments(managerList<ManagerPayment>(payload, 'payments')))
+      .catch((error) => setMessage(error instanceof Error ? error.message : 'Unable to load payments.'));
+  }, []);
+  return (
+    <section className="page">
+      <div className="eyebrow">Manager / 004</div>
+      <h1 className="section-title" style={{ margin: '15px 0 22px' }}>Payment<br /><em>records.</em></h1>
+      {message && <p className="muted">{message}</p>}
+      <div className="result-section">
+        {payments.map((payment) => (
+          <div className="result-row" key={payment.id}>
+            <div className="result-row-main">
+              <strong>{payment.plan}</strong>
+              <small>User #{payment.user_id} / {payment.status} / {new Date(payment.payment_date).toLocaleString()}</small>
+            </div>
+            <strong>{payment.currency} {Number(payment.amount).toFixed(2)}</strong>
+          </div>
+        ))}
+      </div>
+      {payments.length === 0 && !message && <div className="empty-state"><h2>No payment records.</h2></div>}
+    </section>
+  );
+}
+
+function ManagerPage() {
+  const [tab, setTab] = useState<'dashboard' | 'users' | 'songs' | 'payments'>('dashboard');
+  const tabs = [
+    ['dashboard', 'Dashboard'],
+    ['users', 'Users'],
+    ['songs', 'Songs'],
+    ['payments', 'Payments'],
+  ] as const;
+  return (
+    <section className="page">
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
+        {tabs.map(([value, label]) => (
+          <button key={value} className={tab === value ? 'solid-button small-button' : 'outline-button small-button'} onClick={() => setTab(value)}>{label}</button>
+        ))}
+      </div>
+      {tab === 'dashboard' && <ManagerDashboardPage />}
+      {tab === 'users' && <ManagerUsersPage />}
+      {tab === 'songs' && <ManagerSongsPage />}
+      {tab === 'payments' && <ManagerPaymentsPage />}
+    </section>
+  );
+}
+
 function Router({
   authUser,
   setAuthUser,
@@ -1106,6 +1355,7 @@ function Router({
             }} /></Route>
             <Route path="/theme"><Themes selectedColor={customTheme} setSelectedColor={setCustomTheme} setNotice={setNotice} isPremium={isPremium} themePalette={themePalette} /></Route>
             <Route path="/profile"><ProfilePage authUser={authUser as AuthUser} setNotice={setNotice} onSignOut={signOut} isPremium={isPremium} downloadedSongs={downloadedSongs} /></Route>
+            {authUser?.role === 'manager' && <Route path="/manager"><ManagerPage /></Route>}
             <Route><NotFound /></Route>
           </Switch>
         </ErrorBoundary>

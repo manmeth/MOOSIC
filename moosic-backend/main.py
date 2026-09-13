@@ -1254,7 +1254,227 @@ def manager_only(current_user: models.User = Depends(require_role(MANAGER_ROLE))
         "user_id": current_user.id,
         "role": current_user.role,
     }
+@app.get("/manager/dashboard")
+def manager_dashboard(
+    current_user: models.User = Depends(require_role(MANAGER_ROLE)),
+    db: Session = Depends(get_db),
+):
+    total_users = db.query(models.User).count()
+    total_songs = db.query(models.Song).count()
+    total_artists = db.query(models.Artist).count()
+    total_albums = db.query(models.Album).count()
 
+    premium_users = (
+        db.query(models.User)
+        .filter(models.User.is_premium.is_(True))
+        .count()
+    )
+
+    successful_payments = (
+        db.query(models.Payment)
+        .filter(models.Payment.status == "success")
+        .count()
+    )
+
+    total_revenue = (
+        db.query(models.Payment.amount)
+        .filter(models.Payment.status == "success")
+        .all()
+    )
+
+    revenue = sum(amount for (amount,) in total_revenue)
+
+    return {
+        "manager": {
+            "user_id": current_user.id,
+            "name": current_user.name,
+            "role": current_user.role,
+        },
+        "kpis": {
+            "total_users": total_users,
+            "premium_users": premium_users,
+            "total_songs": total_songs,
+            "total_artists": total_artists,
+            "total_albums": total_albums,
+            "successful_payments": successful_payments,
+            "total_revenue": round(revenue, 2),
+        },
+    }
+
+
+@app.get("/manager/users")
+def manager_get_users(
+    current_user: models.User = Depends(require_role(MANAGER_ROLE)),
+    db: Session = Depends(get_db),
+):
+    users = db.query(models.User).order_by(models.User.id.desc()).all()
+    sanitized = []
+    for u in users:
+        sanitized.append({
+            "user_id": u.id,
+            "name": u.name,
+            "username": u.username,
+            "email": u.email,
+            "role": u.role,
+            "is_premium": bool(u.is_premium),
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+        })
+    return {"users": sanitized}
+
+
+@app.patch("/manager/users/{user_id}")
+def manager_patch_user(
+    user_id: int,
+    payload: dict,
+    current_user: models.User = Depends(require_role(MANAGER_ROLE)),
+    db: Session = Depends(get_db),
+):
+    user = get_user_or_404(db, user_id)
+
+    updates = {}
+    # Allow safe updates: name, username, email, is_premium, role -> but disallow granting manager role here
+    if "name" in payload:
+        updates["name"] = payload["name"].strip()
+    if "username" in payload:
+        updates["username"] = payload["username"].strip()
+    if "email" in payload:
+        updates["email"] = payload["email"].lower().strip()
+    if "is_premium" in payload:
+        updates["is_premium"] = bool(payload["is_premium"])
+    if "role" in payload:
+        new_role = payload["role"].strip()
+        if new_role == MANAGER_ROLE:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cannot grant manager role via this endpoint")
+        updates["role"] = new_role
+
+    for k, v in updates.items():
+        setattr(user, k, v)
+
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "message": "User updated",
+        "user": {
+            "user_id": user.id,
+            "name": user.name,
+            "username": user.username,
+            "email": user.email,
+            "role": user.role,
+            "is_premium": bool(user.is_premium),
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+        },
+    }
+
+
+@app.put("/manager/users/{user_id}")
+def manager_put_user(
+    user_id: int,
+    payload: dict,
+    current_user: models.User = Depends(require_role(MANAGER_ROLE)),
+    db: Session = Depends(get_db),
+):
+    # Reuse same logic as PATCH but accept PUT as some clients (or firewall) may restrict PATCH
+    return manager_patch_user(user_id, payload, current_user, db)
+
+
+@app.post("/manager/songs")
+def manager_create_song(
+    song: schemas.SongCreate,
+    current_user: models.User = Depends(require_role(MANAGER_ROLE)),
+    db: Session = Depends(get_db),
+):
+    # Validate artist
+    artist = db.query(models.Artist).filter(models.Artist.id == song.artist_id).first()
+    if not artist:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Artist with id {song.artist_id} not found")
+    if song.album_id is not None:
+        album = db.query(models.Album).filter(models.Album.id == song.album_id).first()
+        if not album:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Album with id {song.album_id} not found")
+
+    new_song = models.Song(
+        title=song.title,
+        artist_id=song.artist_id,
+        album_id=song.album_id,
+        genre=song.genre,
+        mood=song.mood,
+        language=song.language,
+        duration=song.duration,
+        audio_url=song.audio_url,
+        cover_url=song.cover_url,
+    )
+    db.add(new_song)
+    db.commit()
+    db.refresh(new_song)
+
+    return {"message": "Song created", "song_id": new_song.id}
+
+
+@app.put("/manager/songs/{song_id}")
+def manager_update_song(
+    song_id: int,
+    payload: dict,
+    current_user: models.User = Depends(require_role(MANAGER_ROLE)),
+    db: Session = Depends(get_db),
+):
+    song = get_song_or_404(db, song_id)
+
+    if "artist_id" in payload:
+        artist = db.query(models.Artist).filter(models.Artist.id == int(payload["artist_id"])).first()
+        if not artist:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Artist with id {payload['artist_id']} not found")
+    if "album_id" in payload and payload["album_id"] is not None:
+        album = db.query(models.Album).filter(models.Album.id == int(payload["album_id"])).first()
+        if not album:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Album with id {payload['album_id']} not found")
+
+    allowed = {"title", "artist_id", "album_id", "genre", "mood", "language", "duration", "audio_url", "cover_url", "is_playable"}
+    for k, v in payload.items():
+        if k in allowed:
+            setattr(song, k, v)
+
+    db.commit()
+    db.refresh(song)
+
+    return {"message": "Song updated", "song_id": song.id}
+
+
+@app.delete("/manager/songs/{song_id}")
+def manager_delete_song(
+    song_id: int,
+    current_user: models.User = Depends(require_role(MANAGER_ROLE)),
+    db: Session = Depends(get_db),
+):
+    song = get_song_or_404(db, song_id)
+    db.delete(song)
+    db.commit()
+    return {"message": "Song deleted", "song_id": song_id}
+
+
+@app.get("/manager/payments")
+def manager_get_payments(
+    current_user: models.User = Depends(require_role(MANAGER_ROLE)),
+    db: Session = Depends(get_db),
+):
+    payments = (
+        db.query(models.Payment)
+        .order_by(models.Payment.payment_date.desc())
+        .all()
+    )
+    out = []
+    for p in payments:
+        out.append({
+            "payment_id": p.id,
+            "user_id": p.user_id,
+            "user_email": p.user.email if p.user else None,
+            "plan": p.plan,
+            "amount": p.amount,
+            "currency": p.currency,
+            "status": p.status,
+            "payment_date": p.payment_date.isoformat() if p.payment_date else None,
+        })
+    return {"payments": out}
 
 @app.get("/users/{user_id}/recommendations")
 def get_recommendations(
