@@ -142,8 +142,32 @@ def ensure_compatibility_columns():
                 connection.execute(text("ALTER TABLE songs ADD COLUMN audio_checked_at DATETIME"))
 
 
+def ensure_downloads_table():
+    inspector = inspect(engine)
+    if "downloads" in inspector.get_table_names():
+        return
+
+    with engine.begin() as connection:
+        connection.execute(text("""
+            CREATE TABLE downloads (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                song_id INTEGER NOT NULL,
+                downloaded_at DATETIME,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (song_id) REFERENCES songs(id),
+                UNIQUE (user_id, song_id)
+            )
+        """))
+
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_downloads_user_id ON downloads (user_id)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_downloads_song_id ON downloads (song_id)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_downloads_user_downloaded ON downloads (user_id, downloaded_at)"))
+
+
 def create_tables():
     Base.metadata.create_all(bind=engine)
+    ensure_downloads_table()
     ensure_user_columns()
     ensure_song_language_column()
     ensure_compatibility_columns()

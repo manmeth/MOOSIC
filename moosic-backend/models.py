@@ -33,6 +33,11 @@ class User(Base):
         cascade="all, delete-orphan"
     )
     payments = relationship("Payment", back_populates="user")
+    downloads = relationship(
+        "Download",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
 
 
 class Payment(Base):
@@ -106,6 +111,11 @@ class Song(Base):
 
     artist = relationship("Artist", back_populates="songs")
     album = relationship("Album", back_populates="songs")
+    downloads = relationship(
+        "Download",
+        back_populates="song",
+        cascade="all, delete-orphan"
+    )
 
 
 class Playlist(Base):
@@ -140,6 +150,24 @@ class LikedSong(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     song_id = Column(Integer, ForeignKey("songs.id"))
+
+
+class Download(Base):
+    __tablename__ = "downloads"
+    __table_args__ = (
+        UniqueConstraint("user_id", "song_id", name="uq_download_user_song"),
+        Index("ix_downloads_user_id", "user_id"),
+        Index("ix_downloads_song_id", "song_id"),
+        Index("ix_downloads_user_downloaded", "user_id", "downloaded_at"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    song_id = Column(Integer, ForeignKey("songs.id"), nullable=False)
+    downloaded_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", back_populates="downloads")
+    song = relationship("Song", back_populates="downloads")
 
 
 class ListeningHistory(Base):

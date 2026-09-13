@@ -17,8 +17,22 @@ import { Themes } from './Premium/Themes';
 
 type MoodName = 'Sad' | 'Happy' | 'Neutral' | 'Exhausted' | 'Angry';
 type Mood = { name: MoodName; color: string; background: string; text: string; line: string; description: string; art: string };
-type Track = { title: string; artist: string; duration: string; mood: MoodName; audioUrl?: string };
-type BackendSong = { title: string; artist_name?: string | null; duration?: number | null; mood?: string | null; audio_url?: string | null };
+type Track = { id?: number; title: string; artist: string; duration: string; mood: MoodName; audioUrl?: string };
+type BackendSong = { id?: number; title: string; artist_name?: string | null; duration?: number | null; mood?: string | null; audio_url?: string | null };
+type BackendDownload = { id: number; song_id: number; title: string; artist: string; downloaded_at: string; audio_url: string | null };
+type AuthUserRecord = {
+  user_id?: number | string;
+  id?: number | string;
+  userId?: number | string;
+  email?: string;
+  name?: string;
+  username?: string;
+  role?: string;
+};
+type AuthApiResponse = {
+  user?: AuthUserRecord;
+  token?: string;
+};
 type Playlist = { id: string; name: string; mood: MoodName; count: number; description: string; trackTitles: string[]; isCustom?: boolean };
 type AuthUser = { id: string; email: string; name: string; username: string; role: string };
 type AuthMode = 'login' | 'signup';
@@ -108,11 +122,20 @@ function trackFromDatabase(song: BackendSong): Track {
   const minutes = Math.floor(durationSeconds / 60);
   const seconds = String(durationSeconds % 60).padStart(2, '0');
   return {
+    id: song.id,
     title: song.title,
     artist: song.artist_name ?? 'Unknown artist',
     duration: durationSeconds ? `${minutes}:${seconds}` : '--:--',
     mood,
     audioUrl: song.audio_url ?? undefined,
+  };
+}
+
+function mapBackendDownloadToDownloadedSong(download: BackendDownload): DownloadedSong {
+  return {
+    title: download.title,
+    artist: download.artist,
+    date: download.downloaded_at ? new Date(download.downloaded_at).toLocaleDateString() : 'Unknown date',
   };
 }
 
@@ -236,7 +259,7 @@ function AuthPage({ mode, setMode, onAuthenticated, connectionError }: { mode: A
     try {
       if (isSignup) {
         if (form.password.length < 8) throw new Error('Password must be at least 8 characters.');
-        const payload = await api.apiFetch('/users', { method: 'POST', body: { name: form.name.trim(), username: form.username.trim().toLowerCase(), email: form.email.trim().toLowerCase(), password: form.password } });
+        const payload = await api.apiFetch<AuthApiResponse>('/users', { method: 'POST', body: { name: form.name.trim(), username: form.username.trim().toLowerCase(), email: form.email.trim().toLowerCase(), password: form.password } });
         const rawUser = payload?.user;
         const token = payload?.token;
         if (!rawUser || !token) throw new Error('Invalid response from server.');
@@ -251,7 +274,7 @@ function AuthPage({ mode, setMode, onAuthenticated, connectionError }: { mode: A
         console.log('[auth] login success', mapped);
         onAuthenticated(mapped);
       } else {
-        const payload = await api.apiFetch('/login', { method: 'POST', body: { email: form.email.trim().toLowerCase(), password: form.password } });
+        const payload = await api.apiFetch<AuthApiResponse>('/login', { method: 'POST', body: { email: form.email.trim().toLowerCase(), password: form.password } });
         const rawUser = payload?.user;
         const token = payload?.token;
         if (!rawUser || !token) throw new Error('Invalid response from server.');
@@ -335,9 +358,9 @@ function AuthGate({
     (async () => {
       console.log('[auth] /me started');
       try {
-        const payload = await api.apiFetch('/me');
+        const payload = await api.apiFetch<AuthApiResponse | AuthUserRecord>('/me');
         if (!active) return;
-        const rawUser = payload?.user ?? payload;
+        const rawUser = (payload && 'user' in payload ? payload.user : payload) as AuthUserRecord | undefined;
         if (!rawUser) throw new Error('Failed to restore session.');
         const mapped: AuthUser = {
           id: String(rawUser.user_id ?? rawUser.id ?? rawUser.userId ?? ''),
@@ -510,7 +533,7 @@ function RecordCover({ mood, label = 'MOOSIC' }: { mood: Mood; label?: string })
   );
 }
 
-function HomePage({ selectedMood, selectedPlaylist, setNotice, isPremium, onDownloadCurrentTrack }: { selectedMood: MoodName; selectedPlaylist: Playlist | null; setNotice: (notice: string) => void; isPremium: boolean; onDownloadCurrentTrack: (title: string, artist: string) => void }) {
+function HomePage({ selectedMood, selectedPlaylist, setNotice, isPremium, onDownloadCurrentTrack }: { selectedMood: MoodName; selectedPlaylist: Playlist | null; setNotice: (notice: string) => void; isPremium: boolean; onDownloadCurrentTrack: (songId: number) => Promise<void> }) {
   const [isPlaying, setIsPlaying] = useState(true);
   const [trackIndex, setTrackIndex] = useState(0);
   const [progress, setProgress] = useState({ currentTime: 0, duration: 0 });
@@ -638,14 +661,23 @@ function HomePage({ selectedMood, selectedPlaylist, setNotice, isPremium, onDown
     return `${mins}:${secs}`;
   };
   const progressPercent = progress.duration ? Math.min(100, (progress.currentTime / progress.duration) * 100) : 0;
-  const handleDownload = () => {
+  const handleDownload = async () => {
+ 
     if (!isPremium) {
       setNotice('Premium unlocks downloads. Upgrade to download this track.');
       setLocation('/premium');
       return;
     }
-    onDownloadCurrentTrack(current.title, current.artist);
-    setNotice(`${current.title} saved to your downloaded songs.`);
+    if (typeof current.id !== 'number') {
+      setNotice('This track is not currently available for download.');
+      return;
+    }
+    try {
+      await onDownloadCurrentTrack(current.id);
+      setNotice(`${current.title} saved to your downloaded songs.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Unable to download this track right now.');
+    }
   };
   return (
     <section className="page" style={moodStyle(mood)}>
@@ -944,11 +976,28 @@ function Router({
   const [isPremium, setIsPremium] = useState(false);
   const [downloadedSongs, setDownloadedSongs] = useState<DownloadedSong[]>([]);
   const [customTheme, setCustomTheme] = useState<string | null>(() => window.localStorage.getItem('moodsic-custom-theme'));
+  useEffect(() => {
+    if (!isPremium) {
+      if (customTheme) {
+        setCustomTheme(null);
+        window.localStorage.removeItem('moodsic-custom-theme');
+      }
+      return;
+    }
+
+    if (customTheme) {
+      window.localStorage.setItem('moodsic-custom-theme', customTheme);
+    } else {
+      window.localStorage.removeItem('moodsic-custom-theme');
+    }
+  }, [customTheme, isPremium]);
   const selectMood = (mood: MoodName) => { setSelectedMood(mood); setSelectedPlaylist(null); setLocation('/choose-playlist'); };
   const choosePlaylist = (playlist: Playlist) => { setSelectedPlaylist(playlist); setLocation('/home'); };
   const signOut = () => {
     console.log('[auth] logout triggered');
     api.clearToken();
+    setIsPremium(false);
+    setDownloadedSongs([]);
     setAuthUser(null);
     setAuthMode('login');
     setLocation('/');
@@ -958,6 +1007,54 @@ function Router({
       ? { ...playlist, trackTitles: [...playlist.trackTitles, trackTitle], count: playlist.trackTitles.length + 1 }
       : playlist));
   };
+  const refreshPremiumStatus = async () => {
+    if (!authUser) {
+      setIsPremium(false);
+      setDownloadedSongs([]);
+      return false;
+    }
+
+    try {
+      const status = await api.apiFetch<{ is_premium: boolean }>('/premium/status');
+      const premium = Boolean(status.is_premium);
+      setIsPremium(premium);
+
+      if (!premium) {
+        setDownloadedSongs([]);
+        return false;
+      }
+
+      const downloads = await api.apiFetch<BackendDownload[]>(`/users/${authUser.id}/downloads`);
+      setDownloadedSongs(downloads.map(mapBackendDownloadToDownloadedSong));
+      return true;
+    } catch (error) {
+      console.warn('[premium] failed to refresh premium status', error);
+      setIsPremium(false);
+      setDownloadedSongs([]);
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    if (!authUser) {
+      setIsPremium(false);
+      setDownloadedSongs([]);
+      return;
+    }
+
+    let active = true;
+    const loadPremiumState = async () => {
+      const premiumState = await refreshPremiumStatus();
+      if (!active) return;
+      if (premiumState) {
+        setIsPremium(true);
+      }
+    };
+
+    void loadPremiumState();
+    return () => { active = false; };
+  }, [authUser]);
+
   useEffect(() => {
     let active = true;
     api.apiFetch<BackendSong[]>('/songs?limit=200')
@@ -984,11 +1081,29 @@ function Router({
           <Switch>
             <Route path="/"><MoodPicker selectMood={selectMood} /></Route>
             <Route path="/choose-playlist"><PlaylistChoicePage moodName={selectedMood} library={library} deleted={deleted} choosePlaylist={choosePlaylist} /></Route>
-            <Route path="/home"><HomePage selectedMood={selectedMood} selectedPlaylist={selectedPlaylist} setNotice={setNotice} isPremium={isPremium} onDownloadCurrentTrack={(title, artist) => setDownloadedSongs((current) => current.some((item) => item.title === title) ? current : [{ title, artist, date: new Date().toLocaleDateString() }, ...current])} /></Route>
+            <Route path="/home"><HomePage selectedMood={selectedMood} selectedPlaylist={selectedPlaylist} setNotice={setNotice} isPremium={isPremium} onDownloadCurrentTrack={async (songId: number) => {
+              if (!authUser) {
+                throw new Error('Authentication required to download tracks.');
+              }
+              const download = await api.apiFetch<BackendDownload>(`/users/${authUser.id}/downloads`, {
+                method: 'POST',
+                body: { song_id: songId },
+              });
+              setDownloadedSongs((current) => {
+                const mapped = mapBackendDownloadToDownloadedSong(download);
+                const withoutDuplicate = current.filter((item) => !(item.title === mapped.title && item.artist === mapped.artist));
+                return [mapped, ...withoutDuplicate];
+              });
+            }} /></Route>
             <Route path="/playlists"><PlaylistsPage library={library} selectMood={selectMood} setNotice={setNotice} deleted={deleted} setDeleted={setDeleted} onCreate={(playlist) => setLibrary((current) => [playlist, ...current])} /></Route>
             <Route path="/restore"><RestorePage library={library} deleted={deleted} setDeleted={setDeleted} setNotice={setNotice} /></Route>
             <Route path="/search"><SearchPage library={library} selectMood={selectMood} setNotice={setNotice} addTrackToPlaylist={addTrackToPlaylist} /></Route>
-            <Route path="/premium"><PremiumPage isPremium={isPremium} onUpgrade={() => { setIsPremium(true); setNotice('Premium unlocked. Your profile and room now reflect the premium plan.'); }} /></Route>
+            <Route path="/premium"><PremiumPage isPremium={isPremium} onUpgrade={async () => {
+              const premium = await refreshPremiumStatus();
+              if (premium) {
+                setNotice('Premium unlocked. Your profile and room now reflect the premium plan.');
+              }
+            }} /></Route>
             <Route path="/theme"><Themes selectedColor={customTheme} setSelectedColor={setCustomTheme} setNotice={setNotice} isPremium={isPremium} themePalette={themePalette} /></Route>
             <Route path="/profile"><ProfilePage authUser={authUser as AuthUser} setNotice={setNotice} onSignOut={signOut} isPremium={isPremium} downloadedSongs={downloadedSongs} /></Route>
             <Route><NotFound /></Route>

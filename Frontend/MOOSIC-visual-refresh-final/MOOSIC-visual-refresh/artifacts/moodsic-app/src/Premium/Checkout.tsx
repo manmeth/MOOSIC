@@ -1,5 +1,6 @@
 import { Check, CreditCard, Lock, X } from 'lucide-react';
 import { useState } from 'react';
+import api from '../lib/api';
 
 type CheckoutProps = {
   onSuccess: () => void;
@@ -31,18 +32,50 @@ export function Checkout({ onSuccess, onFailure, onCancel }: CheckoutProps) {
     return '';
   };
 
-  const submit = (event: React.FormEvent<HTMLFormElement>) => {
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const validationError = validate();
     if (validationError) {
       setError(validationError);
       return;
     }
+
     setIsSubmitting(true);
-    window.setTimeout(() => {
+    try {
+      await api.apiFetch('/premium/subscribe', {
+        method: 'POST',
+        body: {
+          plan: 'premium',
+          payment_method: 'test_success',
+        },
+      });
       setIsSubmitting(false);
       onSuccess();
-    }, 650);
+    } catch (submitError) {
+      setIsSubmitting(false);
+      setError(submitError instanceof Error ? submitError.message : 'Payment could not be completed.');
+    }
+  };
+
+  const simulateFailure = async () => {
+    if (isSubmitting) return;
+    setError('');
+    setIsSubmitting(true);
+    try {
+      await api.apiFetch('/premium/subscribe', {
+        method: 'POST',
+        body: {
+          plan: 'premium',
+          payment_method: 'test_failure',
+        },
+      });
+      setIsSubmitting(false);
+      onFailure();
+    } catch (submitError) {
+      setIsSubmitting(false);
+      setError(submitError instanceof Error ? submitError.message : 'Payment could not be completed.');
+      onFailure();
+    }
   };
 
   return (
@@ -68,9 +101,9 @@ export function Checkout({ onSuccess, onFailure, onCancel }: CheckoutProps) {
           </div>
           {error && <p className="checkout-error" role="alert" data-testid="text-checkout-error">{error}</p>}
           <button className="solid-button checkout-submit" type="submit" disabled={isSubmitting} data-testid="button-submit-checkout"><CreditCard size={15} /> {isSubmitting ? 'Processing payment...' : 'Complete mock payment'}</button>
-          <button className="checkout-failure-button" type="button" onClick={onFailure} disabled={isSubmitting} data-testid="button-simulate-payment-failure">Simulate payment failure</button>
+          <button className="checkout-failure-button" type="button" onClick={simulateFailure} disabled={isSubmitting} data-testid="button-simulate-payment-failure">Simulate payment failure</button>
         </form>
-        <p className="checkout-note"><Lock size={13} /> This is a frontend-only checkout preview. No payment is processed.</p>
+        <p className="checkout-note"><Lock size={13} /> This mock checkout records the sandbox result in the backend, without processing any real payment.</p>
       </section>
     </div>
   );

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -73,6 +75,19 @@ class PlaybackStateUpdate(BaseModel):
     song_id: int | None = None
     position_seconds: int = 0
     is_playing: bool = False
+
+
+class DownloadCreate(BaseModel):
+    song_id: int
+
+
+class DownloadResponse(BaseModel):
+    id: int
+    song_id: int
+    title: str
+    artist: str
+    downloaded_at: datetime
+    audio_url: str | None
 
 
 class LikeSongCreate(BaseModel):
