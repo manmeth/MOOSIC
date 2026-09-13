@@ -842,6 +842,15 @@ def require_self_or_403(user_id: int, current_user: models.User = Depends(get_cu
     return current_user
 
 
+def require_premium(current_user: models.User = Depends(get_current_user)):
+    if not current_user.is_premium:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Premium subscription required",
+        )
+    return current_user
+
+
 @app.get("/me")
 def get_me(current_user=Depends(get_current_user)):
     return {
