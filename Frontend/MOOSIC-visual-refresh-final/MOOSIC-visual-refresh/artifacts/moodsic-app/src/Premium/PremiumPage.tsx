@@ -19,9 +19,9 @@ const perks = [
 export function PremiumPage({ isPremium, onUpgrade }: PremiumPageProps) {
   const [checkoutState, setCheckoutState] = useState<CheckoutState>('closed');
   const startCheckout = () => setCheckoutState('open');
-  const completeCheckout = () => {
+  const completeCheckout = async () => {
     setCheckoutState('success');
-    onUpgrade();
+    await onUpgrade();
   };
 
   return (

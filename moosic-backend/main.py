@@ -1554,6 +1554,97 @@ def get_playlist_songs(
     ]
 
 
+def serialize_download(download: models.Download):
+    song = download.song
+    return {
+        "id": download.id,
+        "song_id": download.song_id,
+        "title": song.title if song else "",
+        "artist": song.artist.name if song and song.artist else "",
+        "downloaded_at": download.downloaded_at,
+        "audio_url": song.audio_url if song else None,
+    }
+
+
+@app.post("/users/{user_id}/downloads", response_model=schemas.DownloadResponse)
+def create_download(
+    user_id: int,
+    payload: schemas.DownloadCreate,
+    current_user: models.User = Depends(require_self_or_403),
+    _: models.User = Depends(require_premium),
+    db: Session = Depends(get_db),
+):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only access your own resources")
+    get_user_or_404(db, user_id)
+    song = get_song_or_404(db, payload.song_id)
+
+    existing_download = (
+        db.query(models.Download)
+        .filter(models.Download.user_id == user_id, models.Download.song_id == payload.song_id)
+        .first()
+    )
+    if existing_download:
+        return schemas.DownloadResponse(**serialize_download(existing_download))
+
+    download = models.Download(
+        user_id=user_id,
+        song_id=payload.song_id,
+        downloaded_at=datetime.utcnow(),
+    )
+    db.add(download)
+    db.commit()
+    db.refresh(download)
+
+    return schemas.DownloadResponse(**serialize_download(download))
+
+
+@app.get("/users/{user_id}/downloads", response_model=list[schemas.DownloadResponse])
+def get_downloads(
+    user_id: int,
+    current_user: models.User = Depends(require_self_or_403),
+    _: models.User = Depends(require_premium),
+    db: Session = Depends(get_db),
+):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only access your own resources")
+    get_user_or_404(db, user_id)
+
+    downloads = (
+        db.query(models.Download)
+        .filter(models.Download.user_id == user_id)
+        .order_by(models.Download.downloaded_at.desc(), models.Download.id.desc())
+        .all()
+    )
+    return [schemas.DownloadResponse(**serialize_download(download)) for download in downloads]
+
+
+@app.delete("/users/{user_id}/downloads/{song_id}")
+def delete_download(
+    user_id: int,
+    song_id: int,
+    current_user: models.User = Depends(require_self_or_403),
+    _: models.User = Depends(require_premium),
+    db: Session = Depends(get_db),
+):
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden: you can only access your own resources")
+    get_user_or_404(db, user_id)
+    get_song_or_404(db, song_id)
+
+    download = (
+        db.query(models.Download)
+        .filter(models.Download.user_id == user_id, models.Download.song_id == song_id)
+        .first()
+    )
+    if not download:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Download not found")
+
+    db.delete(download)
+    db.commit()
+    return {"message": "Download removed successfully"}
+
+
 @app.post("/users/{user_id}/liked-songs")
 def like_song(
     user_id: int,
