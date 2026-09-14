@@ -5,3 +5,4 @@ bcrypt
 PyJWT
 email-validator
 python-dotenv
+psycopg[binary]

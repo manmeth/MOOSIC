@@ -1,36 +1,76 @@
+import os
 from pathlib import Path
 
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-DATABASE_PATH = Path(__file__).resolve().parent / "moosic.db"
-DATABASE_URL = f"sqlite:///{DATABASE_PATH.as_posix()}"
 
-# DATABASE OPTIMIZATION: Connection pooling and pooling configuration
-# For SQLite, we use StaticPool to ensure connection reuse
-# Pre-ping connections to detect stale connections early
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,  # Reuse single connection for SQLite
-    pool_pre_ping=True,  # Verify connections before using them
-    echo=False,  # Set to True for SQL debugging
-)
+# Local development:
+#   - no DATABASE_URL -> SQLite in moosic-backend/moosic.db
+#
+# Production / Vercel:
+#   - DATABASE_URL set by Neon -> PostgreSQL
+_raw_database_url = os.getenv("DATABASE_URL", "").strip()
+
+if _raw_database_url:
+    # Neon/Vercel may provide a standard PostgreSQL URL.
+    # Explicitly use Psycopg 3 so SQLAlchemy does not look for psycopg2.
+    if _raw_database_url.startswith("postgresql://"):
+        DATABASE_URL = _raw_database_url.replace(
+            "postgresql://",
+            "postgresql+psycopg://",
+            1,
+        )
+    elif _raw_database_url.startswith("postgres://"):
+        DATABASE_URL = _raw_database_url.replace(
+            "postgres://",
+            "postgresql+psycopg://",
+            1,
+        )
+    else:
+        DATABASE_URL = _raw_database_url
+else:
+    DATABASE_PATH = Path(__file__).resolve().parent / "moosic.db"
+    DATABASE_URL = f"sqlite:///{DATABASE_PATH.as_posix()}"
 
 
-@event.listens_for(engine, "connect")
-def enable_sqlite_foreign_keys(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.close()
+IS_SQLITE = DATABASE_URL.startswith("sqlite")
+IS_POSTGRES = DATABASE_URL.startswith("postgresql")
+
+
+# Keep the current optimized SQLite behavior locally.
+# For Neon/Postgres, use SQLAlchemy's normal connection pool.
+if IS_SQLITE:
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+        pool_pre_ping=True,
+        echo=False,
+    )
+else:
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,
+        echo=False,
+    )
+
+
+# SQLite needs foreign-key enforcement enabled explicitly.
+if IS_SQLITE:
+    @event.listens_for(engine, "connect")
+    def enable_sqlite_foreign_keys(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
     bind=engine,
-    expire_on_commit=False,  # Reduce unnecessary queries after commit
+    expire_on_commit=False,
 )
 
 Base = declarative_base()
@@ -39,7 +79,7 @@ Base = declarative_base()
 # DATABASE OPTIMIZATION: Transaction management utilities
 class TransactionManager:
     """Utility class for managing database transactions safely."""
-    
+
     @staticmethod
     def commit_with_rollback(session, action_func):
         """Execute action with automatic rollback on error."""
@@ -50,7 +90,7 @@ class TransactionManager:
         except Exception as e:
             session.rollback()
             raise e
-    
+
     @staticmethod
     def batch_commit(session, operations):
         """Execute multiple operations in a single transaction."""
@@ -62,6 +102,14 @@ class TransactionManager:
         except Exception as e:
             session.rollback()
             raise e
+
+
+def _boolean_default_false() -> str:
+    return "FALSE" if IS_POSTGRES else "0"
+
+
+def _datetime_type() -> str:
+    return "TIMESTAMP" if IS_POSTGRES else "DATETIME"
 
 
 def ensure_user_columns():
@@ -76,7 +124,9 @@ def ensure_user_columns():
     }.items():
         if column_name not in columns:
             with engine.begin() as connection:
-                connection.execute(text(f"ALTER TABLE users ADD COLUMN {column_name} {definition}"))
+                connection.execute(
+                    text(f"ALTER TABLE users ADD COLUMN {column_name} {definition}")
+                )
 
 
 def ensure_song_language_column():
@@ -92,80 +142,116 @@ def ensure_song_language_column():
 
 def ensure_compatibility_columns():
     inspector = inspect(engine)
+
     if "users" in inspector.get_table_names():
         columns = [column["name"] for column in inspector.get_columns("users")]
+
         if "name" not in columns:
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE users ADD COLUMN name VARCHAR"))
+
         if "role" not in columns:
             with engine.begin() as connection:
-                connection.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR DEFAULT 'user'"))
+                connection.execute(
+                    text("ALTER TABLE users ADD COLUMN role VARCHAR DEFAULT 'user'")
+                )
+
         if "is_premium" not in columns:
             with engine.begin() as connection:
-                connection.execute(text("ALTER TABLE users ADD COLUMN is_premium BOOLEAN DEFAULT 0"))
+                connection.execute(
+                    text(
+                        "ALTER TABLE users ADD COLUMN "
+                        f"is_premium BOOLEAN DEFAULT {_boolean_default_false()}"
+                    )
+                )
 
     if "playlists" in inspector.get_table_names():
         columns = [column["name"] for column in inspector.get_columns("playlists")]
         if "description" not in columns:
             with engine.begin() as connection:
-                connection.execute(text("ALTER TABLE playlists ADD COLUMN description VARCHAR"))
+                connection.execute(
+                    text("ALTER TABLE playlists ADD COLUMN description VARCHAR")
+                )
 
     if "listening_history" in inspector.get_table_names():
-        columns = [column["name"] for column in inspector.get_columns("listening_history")]
+        columns = [
+            column["name"]
+            for column in inspector.get_columns("listening_history")
+        ]
+
         additions = {
             "progress_seconds": "INTEGER DEFAULT 0",
-            "completed": "BOOLEAN DEFAULT 0",
-            "skipped": "BOOLEAN DEFAULT 0",
+            "completed": f"BOOLEAN DEFAULT {_boolean_default_false()}",
+            "skipped": f"BOOLEAN DEFAULT {_boolean_default_false()}",
         }
-        missing = [(name, definition) for name, definition in additions.items() if name not in columns]
+
+        missing = [
+            (name, definition)
+            for name, definition in additions.items()
+            if name not in columns
+        ]
+
         if missing:
             with engine.begin() as connection:
                 for name, definition in missing:
-                    connection.execute(text(f"ALTER TABLE listening_history ADD COLUMN {name} {definition}"))
+                    connection.execute(
+                        text(
+                            "ALTER TABLE listening_history "
+                            f"ADD COLUMN {name} {definition}"
+                        )
+                    )
 
     if "playlist_songs" in inspector.get_table_names():
-        columns = [column["name"] for column in inspector.get_columns("playlist_songs")]
+        columns = [
+            column["name"]
+            for column in inspector.get_columns("playlist_songs")
+        ]
         if "position" not in columns:
             with engine.begin() as connection:
-                connection.execute(text("ALTER TABLE playlist_songs ADD COLUMN position INTEGER DEFAULT 0"))
+                connection.execute(
+                    text(
+                        "ALTER TABLE playlist_songs "
+                        "ADD COLUMN position INTEGER DEFAULT 0"
+                    )
+                )
 
     if "songs" in inspector.get_table_names():
         columns = [column["name"] for column in inspector.get_columns("songs")]
+
         if "mood" not in columns:
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE songs ADD COLUMN mood VARCHAR"))
+
         if "is_playable" not in columns:
             with engine.begin() as connection:
-                connection.execute(text("ALTER TABLE songs ADD COLUMN is_playable BOOLEAN"))
+                connection.execute(
+                    text("ALTER TABLE songs ADD COLUMN is_playable BOOLEAN")
+                )
+
         if "audio_checked_at" not in columns:
             with engine.begin() as connection:
-                connection.execute(text("ALTER TABLE songs ADD COLUMN audio_checked_at DATETIME"))
+                connection.execute(
+                    text(
+                        "ALTER TABLE songs ADD COLUMN "
+                        f"audio_checked_at {_datetime_type()}"
+                    )
+                )
 
 
 def ensure_downloads_table():
-    inspector = inspect(engine)
-    if "downloads" in inspector.get_table_names():
-        return
+    # models.py defines the proper SQLAlchemy table for both SQLite and Postgres.
+    # Using SQLAlchemy here avoids SQLite-specific CREATE TABLE syntax.
+    import models  # noqa: F401
 
-    with engine.begin() as connection:
-        connection.execute(text("""
-            CREATE TABLE downloads (
-                id INTEGER PRIMARY KEY,
-                user_id INTEGER NOT NULL,
-                song_id INTEGER NOT NULL,
-                downloaded_at DATETIME,
-                FOREIGN KEY (user_id) REFERENCES users(id),
-                FOREIGN KEY (song_id) REFERENCES songs(id),
-                UNIQUE (user_id, song_id)
-            )
-        """))
-
-        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_downloads_user_id ON downloads (user_id)"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_downloads_song_id ON downloads (song_id)"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_downloads_user_downloaded ON downloads (user_id, downloaded_at)"))
+    downloads_table = Base.metadata.tables.get("downloads")
+    if downloads_table is not None:
+        downloads_table.create(bind=engine, checkfirst=True)
 
 
 def create_tables():
+    # Ensure every model has registered itself on Base.metadata before create_all().
+    import models  # noqa: F401
+
     Base.metadata.create_all(bind=engine)
     ensure_downloads_table()
     ensure_user_columns()
@@ -175,7 +261,7 @@ def create_tables():
 
 def get_db():
     """DATABASE OPTIMIZATION: Session factory with proper cleanup.
-    
+
     Ensures connections are properly closed and transactions are rolled back
     if not explicitly committed.
     """
