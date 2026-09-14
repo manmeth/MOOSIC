@@ -1,305 +1,232 @@
-                    MOOSIC
-                       │
-                       ▼
-              ┌─────────────────┐
-              │  Mood Selection │
-              │                 │
-              │  Sad            │
-              │  Happy          │
-              │  Neutral        │
-              │  Exhausted      │
-              │  Angry          │
-              └────────┬────────┘
-                       │
-                Select a mood
-                       │
-                       ▼
-              ┌─────────────────┐
-              │  Mood Theme     │
-              │  Engine         │
-              └────────┬────────┘
-                       │
-                       ▼
-              ┌─────────────────┐
-              │  Now Playing /  │
-              │  Home Dashboard │
-              └────────┬────────┘
-                       │
-        ┌──────────────┼──────────────┐
-        ▼              ▼              ▼
-   My Playlists      Search        Profile
-        │              │
-        ▼              ▼
-   Create/Edit      Search Songs
-   Playlists        & Artists
-        │              │
-        ▼              ▼
-   Recycle Bin      Add to Playlist
-        │
-   ┌────┴─────┐
-   ▼          ▼
-Restore    Permanent
-Playlist   Delete
+1. Business Problem and Target Users
+Business Problem
 
+Traditional music platforms provide a large number of songs but can make it difficult for users to discover music that matches their individual preferences, mood and listening behaviour. Users may also spend time manually creating and managing playlists.
 
-**1. Mood Selection**
+MOOSIC addresses this problem by providing a personalized music experience that combines music discovery, playlist management, recommendations and personalization. The system uses information such as listening behaviour, favourite artists, genres and moods to provide more relevant recommendations. It also provides features such as AI-assisted playlist naming, dynamic themes and playlist recovery.
 
-This is your entry screen.
+The main business objective is to make music discovery more personalized while keeping playlist and library management simple for the user.
 
-The five records/cards are:
+Target Users
 
-Sad → #0c0d88
-Happy → #f1bc46
-Neutral → #5e08aa
-Exhausted → #86a896
-Angry → #da553b
+The primary target users are:
 
-Normal text:
+Individual music listeners who want personalized music recommendations.
+Users who frequently create playlists based on different moods, genres or activities.
+Users interested in music discovery rather than manually searching for every song.
+Administrators/system managers who are responsible for managing the system, data and operational processes.
 
-#f7efcd
+MOOSIC is therefore designed as a user-focused digital business system where user interactions generate data that can be processed to improve personalization.
 
-Happy text:
+2. Technology Stack
 
-#3d0000
+The MOOSIC repository is structured with a separate frontend and backend, with the frontend application located under the Frontend directory and backend components under moosic-backend.
 
-The screen should retain that vinyl/record aesthetic, and the cards themselves are essentially the "records" the user chooses from.
+Layer	Technology / Approach	Purpose
+Frontend	React / Vite	Provides the user interface and user interaction
+Frontend styling	Web-based UI components and styling	Provides the visual interface and responsive experience
+Backend	Backend API layer	Processes requests and applies application/business logic
+Database	Persistent database	Stores users, playlists, songs and user activity
+Authentication	Authentication and authorization layer	Protects accounts and private user resources
+Recommendation logic	Application/business logic	Uses user behaviour, preferences, genres, artists and moods
+AI-assisted features	AI-assisted processing	Supports features such as playlist naming and personalization
+Version control	GitHub	Stores and manages the project source code
 
-Functional flow later
-User clicks Happy
-       ↓
-Store selectedMood = "Happy"
-       ↓
-Theme Engine
-       ↓
-Apply #f1bc46
-       ↓
-Open Now Playing
+The technology stack is organized around a frontend → backend/API → database structure. This separation allows the user interface and business logic to be developed and scaled independently.
 
-So this isn't simply:
+3. Current System Architecture
 
-Button → another page
+The current system architecture is shown in the Current System Architecture & Data Flow diagram in the Draw.io file.
 
-It is:
+The architecture consists of four major layers:
 
-User input → mood state → theme processing → personalised interface
+User → Frontend → Backend/API → Database
 
-That's much better from a systems/architecture perspective.
+The user interacts with the MOOSIC web application through the frontend. Requests such as login, searching for music, creating playlists or requesting recommendations are sent to the backend/API. The backend validates the request, applies the required business logic and communicates with the database before returning the result to the frontend.
 
-**2. Now Playing**
+Major Components
 
-This is the main landing/dashboard after mood selection.
+Frontend:
+The frontend provides the main user interface for login, music discovery, mood selection, playlist management, library management and other user interactions.
 
-Your screenshot establishes the layout really well:
+Backend/API:
+The backend acts as the main processing layer. It receives requests from the frontend, validates them, checks authorization and performs business operations before communicating with the database.
 
-Left sidebar
-MOOSIC
+Authentication:
+Authentication verifies the user's identity during login and registration. Authorization ensures that users can only access resources they are permitted to use, such as their private playlists.
 
-BROWSE
+Database:
+The database provides persistent storage for application information such as users, songs, playlists, listening activity and preferences.
 
-⌂ Now playing
-♫ My playlists
-↻ Restore
-⌕ Search
-♙ Profile
-Top bar
-Listening in the mood room
+Storage:
+Storage can be used for application assets, backups and other files that should not be stored directly inside the main transactional database.
 
-                              ←    NS
-Main content
+External Services:
+External services can support music-related functionality and AI-assisted features where required. These services are accessed through controlled API connections rather than directly from the frontend.
 
-The large mood-specific hero section:
+4. Data Flow Between Major Components
 
-YOUR ROOM TONIGHT / ANGRY
+The major data flow in MOOSIC is:
 
-Turn it up. Let it
-out.
+User → Frontend → Authentication/API → Business Logic → Database → Backend → Frontend → User
 
-A loud, honest room for the heat under your skin.
+For example, when a user requests personalized recommendations:
 
-[ ▶ Playing now ] [ ♫ See the needle ]
+The user selects a mood, genre or discovery option through the frontend.
+The frontend sends the request to the backend/API.
+The backend verifies the user's authentication and authorization.
+The recommendation logic processes relevant user information such as listening behaviour, favourite artists, genres and moods.
+Required information is retrieved from the database.
+The recommendation result is returned through the API.
+The frontend displays the recommendations to the user.
 
-                         Vinyl record
+This creates a continuous cycle where user interactions become operational data, the data is processed, and the processed information is used to improve the user experience. This also reflects the TPS, MIS and DSS roles described for MOOSIC in the project documentation.
 
-Then:
+5. Current Hosting and Deployment Approach
 
-NOW ON THE TURNTABLE
+At the current project stage, MOOSIC is primarily structured as a development application with separate frontend and backend components. The repository contains dedicated frontend and backend directories and scripts for running the application.
 
-21 Guns
-Green Day
+The current approach is suitable for development and demonstration because the frontend and backend can be developed and tested separately.
 
-♡
-waveform
-───────────────
-1:24                 5:21
+However, this approach would not be sufficient for millions of users because a single development environment would become a bottleneck. A production deployment would therefore require cloud hosting, multiple application instances, load balancing, caching, database scaling and monitoring.
 
-        shuffle  previous  pause  next  volume
+The proposed cloud architecture described in the next section addresses these requirements.
 
-And on the right:
+6. Proposed Cloud Deployment Architecture – AWS
 
-Coming up
+For large-scale deployment, Amazon Web Services (AWS) is proposed as the cloud platform.
 
-01  21 Guns
-02  9 to 5
-03  Take Me Home, Country Roads
-04  The Zephyr Song
-05  Wonderwall
-Important architectural point
+The proposed architecture is shown in the Proposed AWS Cloud Deployment diagram.
 
-This screen is pulling information from multiple data sources:
+Main Components
 
-User Mood
-    ↓
-Theme Engine ───────────────→ Page Theme
+Users / Web Browsers
+Users access MOOSIC through web browsers from different locations.
 
-Listening History ───────┐
-                         ↓
-Songs ───────────────→ Recommendation Engine
-                         ↓
-                    Recommended Playlist
-                         ↓
-                    Now Playing
+Amazon CloudFront / CDN
+A Content Delivery Network can deliver static frontend files closer to users, reducing latency and reducing the amount of traffic reaching the application servers.
 
-That fits your existing project idea of a recommendation/personalisation system. Your original data-flow document already identifies the Recommendation Engine and Listening History as part of this flow.
+AWS WAF
+The Web Application Firewall can filter malicious or suspicious web traffic before it reaches the application.
 
-**3. My Playlists**
+Load Balancer
+The load balancer distributes incoming requests across multiple backend application instances. This prevents one server from handling all requests.
 
-This is a separate major frontend module, not just a section of the homepage.
+Application/API Cluster
+Multiple backend instances can run simultaneously. Because the application layer is designed to process requests independently, additional instances can be added when traffic increases.
 
-Your design has:
+Cache Layer
+Frequently requested information can be temporarily stored in a cache. This reduces repeated database queries and improves response time.
 
-THE RECORD SHELF / 005
+Database
+The database stores persistent application information. Read replicas can be introduced as the number of users and read requests increases.
 
-My
-playlists
+Object Storage
+Cloud object storage can be used for large files, application assets, backups and other data that does not need to be stored in the transactional database.
 
-                         [ ↻ Restore a playlist ]
+Queue and Worker System
+Time-consuming tasks such as recommendation processing, analytics and other background operations can be moved to workers through a message queue. This prevents these tasks from slowing down normal user requests.
 
-Then:
+Monitoring and Logging
+Monitoring services collect system metrics, errors and logs so that failures and performance problems can be detected quickly.
 
+7. Scaling to 1 Million Users
 
+The 1 Million Users diagram shows how MOOSIC could be scaled if the platform grows significantly.
 
-┌──────────────────────────────────────────────────────┐
-│                                                      │
-│  MAKE A NEW RECORD / AI NAMING DESK                  │
-│                                                      │
-│  Build a playlist                                    │
-│  from the feeling up.             Add songs           │
-│                                      │               │
-│  Choose a mood...                    │ Search        │
-│                                      │               │
-│  PLAYLIST NAME                       │ Cake By...    │
-│  [________________________]          │ Electric Love │
-│                                      │ Someone...    │
-│  DESCRIBE THE VIBE                   │ Wake Me Up    │
-│  [________________________]          │               │
-│                                      │               │
-│  MOOD [ Neutral ▼ ]                  │ [+] Create    │
-│                                      │               │
-└──────────────────────────────────────────────────────┘
+At this level, the application should no longer depend on a single backend server. Multiple API instances can run behind a load balancer, allowing incoming requests to be distributed across the available servers.
 
-Then below:
+Application Scaling
 
-Default Vinyl Playlist Covers
+Additional backend instances can be added horizontally when traffic increases. This allows the system to handle more simultaneous users without depending on one server.
 
-[ Sad ]       [ Happy ]       [ Neutral ]
-  ●             ●                ●
+Database Scaling
 
-This is exactly where your default vinyl-cover idea fits.
+Database read traffic can be distributed to read replicas. Frequently accessed information can also be cached to reduce the number of direct database queries.
 
-**4. Playlist creation architecture**
+Caching
 
-Eventually, this should work as:
+Frequently requested recommendations, popular content and other suitable data can be temporarily cached. This reduces database workload and improves response time.
 
-User
- ↓
-Create Playlist
- ↓
-Enter:
- ├── Playlist name
- ├── Description/vibe
- ├── Mood
- └── Songs
- ↓
-AI Naming Engine
- ↓
-Generate suggested name
- ↓
-Playlist Service
- ↓
-Save Playlist
- ↓
-Default Vinyl Cover
- ↓
-Playlists Database
+Background Processing
 
-Your existing project specifically proposes AI-assisted playlist naming based on mood, genre and the "vibe" of the songs.
+Recommendation generation, analytics and other non-immediate tasks can be processed through queues and background workers rather than making the user wait for every task to finish.
 
-So this is potentially one of your more important business-logic components later, rather than merely a design feature.
+Traffic Management
 
-**5. Recycle Bin / Restore**
+A CDN, WAF and load balancer can manage incoming traffic before requests reach the application servers. This improves both performance and security.
 
-The Restore page is also important because it connects directly to your database structure.
+Planning Calculation
 
-I'd architect it as:
+Using the required scalability assumptions:
 
-MY PLAYLISTS
-      │
-      │ Delete
-      ▼
-Deleted_Playlists
-      │
-      ▼
-  RESTORE PAGE
-      │
- ┌────┴─────┐
- ▼          ▼
-Restore    Delete
- ▼         Permanently
-Playlists
+1,000,000 registered users × 10% peak concurrency = 100,000 concurrent users
 
-Your existing data-flow already contains Deleted_Playlists, so we don't have to invent this architecture.
+If each active user generates 5 requests per minute:
 
-**6.  Search**
+100,000 × 5 = 500,000 requests/minute
 
-Your search screen is:
+500,000 ÷ 60 = 8,333.33 requests/second
 
+Therefore, the 1-million-user architecture must be designed to handle approximately 8,333 requests per second during the assumed peak period.
 
+8. Scaling to 5 Million Users
 
-THE LISTENING DESK / 004
+At 5 million users, the same architecture can be expanded further rather than completely redesigned.
 
-Find a feeling,
-not just a song.
+Application Scaling
 
-[ 🔍 Try "blue", "Hozier", or "Happy" ]
+The API layer can use a larger number of application instances distributed across multiple availability zones. Auto-scaling can increase or decrease the number of instances depending on demand.
 
-SAVE SONGS TO    [ Blue Hour ▼ ]
+Database Scaling
 
-────────────────────────────────────────────
+Database read replicas can handle increasing read traffic. If the dataset becomes extremely large, partitioning or sharding can be considered where necessary.
 
-SONGS / 25                    PLAYLISTS / 5
+Distributed Caching
 
-Cake By The Ocean             Blue Hour
-DNCE / Happy                   Sad / 5 tracks
+A distributed cache can reduce repeated database access across multiple application servers. This becomes increasingly important when a large number of users request similar information simultaneously.
 
-[▶] [+ Add]                   ◉
+Network Scaling
 
-Electric Love                 Windows Down
-BORNS / Happy                 Happy / 5 tracks
+A global CDN can distribute static content closer to users and reduce the load on the main application infrastructure.
 
-[▶] [+ Add]                   ◉
+Background Processing
 
-This gives us another clear application flow:
+A larger worker cluster can process recommendations, analytics and other background tasks independently from the main API servers.
 
-Search Query
-     ↓
-Search Service
-     ↓
-Songs / Artists / Playlists
-     ↓
-Search Results
-     │
-     ├── Play
-     │
-     └── Add to Playlist
-              ↓
-          Playlist Service
+Security and Reliability
+
+At this scale, WAF protection, authentication, authorization, rate limiting, monitoring and automated backups become increasingly important because a failure or security incident could affect a very large number of users.
+
+Planning Calculation
+
+5,000,000 registered users × 10% peak concurrency = 500,000 concurrent users
+
+Requests per minute:
+
+500,000 × 5 = 2,500,000 requests/minute
+
+Requests per second:
+
+2,500,000 ÷ 60 = 41,666.67 requests/second
+
+Therefore, the 5-million-user architecture should be planned around approximately 41,667 requests per second during the assumed peak period.
+
+9. Overall Scalability Strategy
+
+MOOSIC can scale from a small application to a large digital platform by gradually adding infrastructure capacity rather than replacing the entire system.
+
+The main scalability strategies are:
+
+Horizontal application scaling by adding more API instances.
+Load balancing to distribute requests across servers.
+Caching to reduce database workload.
+Database read replicas to handle increasing read traffic.
+Cloud storage for scalable file and backup storage.
+CDN for faster delivery of frontend assets.
+Message queues and workers for background processing.
+Monitoring and logging to identify performance issues.
+Automated backups and recovery to protect against data loss.
+WAF and security controls to protect the application as the number of users increases.
+
+The proposed architecture therefore allows MOOSIC to grow from its current development-scale implementation to a cloud-based architecture capable of supporting 1 million and eventually 5 million users, subject to appropriate infrastructure sizing and performance testing.
