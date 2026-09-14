@@ -1,4 +1,4 @@
-﻿import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Home as HomeIcon, ListMusic, Music2, Pause, Play, RotateCcw, Search, SkipBack, SkipForward, UserRound, X, Disc3, Pencil, Trash2, ArrowLeft, Shuffle, Volume2, VolumeX, Plus, Sparkles, Check, WandSparkles, Palette, LogOut, ArrowRight, Heart, Crown, LockKeyhole, Download, CreditCard } from 'lucide-react';
 import { Link, Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
 import logoAsset from '@assets/moodsic-references/moosic-logo.png';
@@ -147,7 +147,7 @@ const fallbackTracks: Track[] = [
   { title: 'Jeena Jeena', artist: 'Atif Aslam', duration: '3:48', mood: 'Sad' },
   { title: 'Aaoge Jab Tum', artist: 'Rashid Khan', duration: '5:55', mood: 'Sad' },
   { title: 'Barsaat', artist: 'Rochak Kohli, Sonu Nigam', duration: '4:12', mood: 'Sad' },
-  { title: 'Mere Bina', artist: 'Nikhil Dâ€™Souza', duration: '4:49', mood: 'Neutral' },
+  { title: 'Mere Bina', artist: 'Nikhil D’Souza', duration: '4:49', mood: 'Neutral' },
   { title: 'Soch Na Sake', artist: 'Arijit Singh, Tulsi Kumar', duration: '4:41', mood: 'Neutral' },
   { title: 'Tum Ho Toh', artist: 'Farhan Akhtar', duration: '3:58', mood: 'Neutral' },
   { title: 'Kasoor', artist: 'Prateek Kuhad', duration: '3:17', mood: 'Neutral' },
@@ -865,7 +865,7 @@ function AuthPage({ mode, setMode, onAuthenticated, connectionError }: { mode: A
       <section className="auth-panel" aria-label={isSignup ? 'Create your MOOSIC account' : 'Log in to MOOSIC'}>
         <div className="auth-art" style={{ backgroundImage: `url(${loadingFieldAsset})` }} aria-hidden="true" />
         <div className="auth-form-side">
-          <button className="auth-back" type="button" onClick={() => setMode('login')} disabled={!isSignup}>â† Back</button>
+          <button className="auth-back" type="button" onClick={() => setMode('login')} disabled={!isSignup}>← Back</button>
           <div className="auth-heading">
             <span>{isSignup ? 'Sign up' : 'Login to'}</span>
             {!isSignup && <h1>MOOSIC</h1>}
@@ -921,14 +921,14 @@ function AuthPage({ mode, setMode, onAuthenticated, connectionError }: { mode: A
             {message && <p className="auth-message" role="alert">{message}</p>}
             <button className="auth-submit" type="submit" disabled={isSubmitting}>
               {isSubmitting
-                ? (isSignup ? 'Creating your accountâ€¦' : 'Signing you inâ€¦')
+                ? (isSignup ? 'Creating your account…' : 'Signing you in…')
                 : isSignup
                   ? 'Create account'
                   : 'Enter MOOSIC'}
             </button>
           </form>
           <p className="auth-switch">
-            {isSignup ? 'Already have an account?' : 'Donâ€™t have an account?'}{' '}
+            {isSignup ? 'Already have an account?' : 'Don’t have an account?'}{' '}
             <button
               type="button"
               onClick={() => {
@@ -1098,7 +1098,7 @@ function MoodPicker({ selectMood }: { selectMood: (name: MoodName) => void }) {
     <section className="page picker-page">
       <div className="picker-intro animate-rise">
         <h1 className="display-title">How are you<br /><em>feeling?</em></h1>
-        <p>Pick a feeling and weâ€™ll find the right record for the room youâ€™re in.</p>
+        <p>Pick a feeling and we’ll find the right record for the room you’re in.</p>
       </div>
       <div className="mood-carousel-wrap animate-rise-2">
         <div className="mood-list" role="list" aria-label="Choose your mood">
@@ -2180,7 +2180,7 @@ function HomePage({
                     marginBottom: 4,
                   }}
                 >
-                  Now playing Â· {activeRoomName}
+                  Now playing · {activeRoomName}
                 </span>
 
                 <strong
@@ -2206,7 +2206,7 @@ function HomePage({
                     marginTop: 2,
                   }}
                 >
-                  {current.artist} Â· {formatDuration(displayedSeconds)} / {formatDuration(totalSeconds)}
+                  {current.artist} · {formatDuration(displayedSeconds)} / {formatDuration(totalSeconds)}
                 </span>
               </button>
 
@@ -2398,7 +2398,7 @@ function HomePage({
                     activeRoomName !==
                       (selectedPlaylist?.name ??
                         'Mood mix') &&
-                    ` Â· still playing from ${activeRoomName}`}
+                    ` · still playing from ${activeRoomName}`}
                 </div>
               </div>
             </div>
@@ -2995,7 +2995,7 @@ function PlaylistBuilder({
           >
             <WandSparkles size={15} />
             {isThinking
-              ? 'moobot is thinkingâ€¦'
+              ? 'moobot is thinking…'
               : 'Ask moobot for names'}
           </button>
 
@@ -3106,7 +3106,7 @@ function PlaylistBuilder({
         >
           <Plus size={15} />
           {isCreating
-            ? 'Saving playlistâ€¦'
+            ? 'Saving playlist…'
             : 'Create playlist'}
         </button>
       </div>
@@ -3527,7 +3527,7 @@ function SearchPage({
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           className="search-input"
-          placeholder="Try â€œAdeleâ€, â€œHindiâ€, or â€œHappyâ€"
+          placeholder="Try “Adele”, “Hindi”, or “Happy”"
           aria-label="Search MOOSIC"
           data-testid="input-search"
         />
@@ -3661,7 +3661,7 @@ function SearchPage({
         </div>
       ) : (
         <div className="empty-state animate-rise-3">
-          <h2>That record isnâ€™t on the shelf.</h2>
+          <h2>That record isn’t on the shelf.</h2>
           <p>Try a song, artist, mood, or playlist title. The best finds are sometimes one letter away.</p>
           <button className="outline-button small-button" onClick={() => setQuery('')} data-testid="button-clear-search">
             <X size={14} /> Clear search
@@ -3973,7 +3973,7 @@ function PremiumPage({
                     marginBottom: 12,
                   }}
                 >
-                  âœ“ Premium is active on this account.
+                  ✓ Premium is active on this account.
                 </div>
                 <button
                   className="outline-button"
@@ -3982,7 +3982,7 @@ function PremiumPage({
                   data-testid="button-cancel-premium"
                   style={{ width: '100%' }}
                 >
-                  {isBusy ? 'Updatingâ€¦' : 'Cancel premium'}
+                  {isBusy ? 'Updating…' : 'Cancel premium'}
                 </button>
               </div>
             ) : (
@@ -4417,7 +4417,7 @@ function PremiumPage({
                 }}
               >
                 <CreditCard size={16} />
-                {isBusy ? 'Processing mock paymentâ€¦' : 'Complete mock payment'}
+                {isBusy ? 'Processing mock payment…' : 'Complete mock payment'}
               </button>
 
               <button
@@ -4789,7 +4789,7 @@ function ProfilePage({
                   disabled={isSaving}
                   data-testid="button-save-profile"
                 >
-                  {isSaving ? 'Savingâ€¦' : 'Save changes'}
+                  {isSaving ? 'Saving…' : 'Save changes'}
                 </button>
                 <button
                   className="outline-button small-button"
@@ -4806,7 +4806,7 @@ function ProfilePage({
               <h1>{authUser.username}</h1>
               <p>
                 {authUser.name}
-                {currentNote ? ` Â· ${currentNote}` : ' Â· Tell MOOSIC what youâ€™re currently into.'}
+                {currentNote ? ` · ${currentNote}` : ' · Tell MOOSIC what you’re currently into.'}
               </p>
               <div className="profile-actions">
                 <button
@@ -4833,15 +4833,15 @@ function ProfilePage({
 
           <div className="stat-grid">
             <div className="stat">
-              <b>{statsLoading ? 'â€”' : (stats?.hours_listened ?? 0).toFixed(2)}</b>
+              <b>{statsLoading ? '—' : (stats?.hours_listened ?? 0).toFixed(2)}</b>
               <span>hours listened</span>
             </div>
             <div className="stat">
-              <b>{statsLoading ? 'â€”' : stats?.records_visited ?? 0}</b>
+              <b>{statsLoading ? '—' : stats?.records_visited ?? 0}</b>
               <span>records visited</span>
             </div>
             <div className="stat">
-              <b>{statsLoading ? 'â€”' : stats?.favorite_tracks ?? 0}</b>
+              <b>{statsLoading ? '—' : stats?.favorite_tracks ?? 0}</b>
               <span>favorite tracks</span>
             </div>
           </div>
@@ -4906,7 +4906,7 @@ function ManagerDashboardPage() {
     return (
       <section className="page">
         <div className="empty-state">
-          <h2>Loading manager dashboardâ€¦</h2>
+          <h2>Loading manager dashboard…</h2>
         </div>
       </section>
     );
@@ -4919,7 +4919,7 @@ function ManagerDashboardPage() {
     ['Artists', data.kpis.total_artists],
     ['Albums', data.kpis.total_albums],
     ['Successful payments', data.kpis.successful_payments],
-    ['Revenue', `â‚¬${Number(data.kpis.total_revenue).toFixed(2)}`],
+    ['Revenue', `€${Number(data.kpis.total_revenue).toFixed(2)}`],
   ];
 
   return (
@@ -4930,7 +4930,7 @@ function ManagerDashboardPage() {
           <h1>Business<br /><em>dashboard.</em></h1>
         </div>
       </div>
-      <p className="muted">Signed in as {data.manager.name} Â· {data.manager.role}</p>
+      <p className="muted">Signed in as {data.manager.name} · {data.manager.role}</p>
       <div className="stat-grid animate-rise-2" style={{ marginTop: 24 }}>
         {cards.map(([label, value]) => (
           <div className="stat" key={String(label)}>
@@ -4993,7 +4993,7 @@ function ManagerUsersPage() {
               <div>
                 <h2>{user.name || user.username}</h2>
                 <p>{user.email}</p>
-                <p>{user.role} Â· {user.is_premium ? 'Premium' : 'Free'}</p>
+                <p>{user.role} · {user.is_premium ? 'Premium' : 'Free'}</p>
               </div>
               <UserRound size={18} />
             </div>
@@ -5291,7 +5291,7 @@ function ManagerPage({ onSignOut }: { onSignOut: () => void }) {
       <section className="page manager-dashboard-page">
         <div className="eyebrow">MOOSIC / MANAGER</div>
         <h1 className="display-title">Manager<br /><em>dashboard.</em></h1>
-        {message ? <p className="muted">{message}</p> : <p className="muted">Loading business dataâ€¦</p>}
+        {message ? <p className="muted">{message}</p> : <p className="muted">Loading business data…</p>}
         <button className="outline-button small-button" onClick={onSignOut}>Sign out</button>
       </section>
     );
@@ -5304,7 +5304,7 @@ function ManagerPage({ onSignOut }: { onSignOut: () => void }) {
     ['Artists', dashboard.kpis.total_artists],
     ['Albums', dashboard.kpis.total_albums],
     ['Successful payments', dashboard.kpis.successful_payments],
-    ['Revenue', `â‚¬${Number(dashboard.kpis.total_revenue).toFixed(2)}`],
+    ['Revenue', `€${Number(dashboard.kpis.total_revenue).toFixed(2)}`],
   ];
 
   const tabButtonStyle = (active: boolean) => ({
@@ -5324,7 +5324,7 @@ function ManagerPage({ onSignOut }: { onSignOut: () => void }) {
         <div>
           <div className="eyebrow">MOOSIC / MANAGER</div>
           <h1>Business<br /><em>dashboard.</em></h1>
-          <p className="muted">Signed in as {dashboard.manager.name} Â· manager</p>
+          <p className="muted">Signed in as {dashboard.manager.name} · manager</p>
         </div>
         <button className="outline-button small-button" onClick={onSignOut}>Sign out</button>
       </div>
@@ -5375,7 +5375,7 @@ function ManagerPage({ onSignOut }: { onSignOut: () => void }) {
                   <div>
                     <h2>{user.name || user.username}</h2>
                     <p>{user.email}</p>
-                    <p>{user.role} Â· {user.is_premium ? 'Premium' : 'Free'}</p>
+                    <p>{user.role} · {user.is_premium ? 'Premium' : 'Free'}</p>
                   </div>
                   <UserRound size={18} />
                 </div>
@@ -6423,7 +6423,7 @@ function Router({
 }
 
 function NotFound() {
-  return <section className="page"><div className="eyebrow">404 / wrong side</div><h1 className="display-title">This record<br /><em>isnâ€™t here.</em></h1><Link href="/" className="solid-button" data-testid="link-not-found-home">Back to the feeling picker</Link></section>;
+  return <section className="page"><div className="eyebrow">404 / wrong side</div><h1 className="display-title">This record<br /><em>isn’t here.</em></h1><Link href="/" className="solid-button" data-testid="link-not-found-home">Back to the feeling picker</Link></section>;
 }
 
 function App() {
@@ -6442,4 +6442,3 @@ function App() {
 }
 
 export default App;
-
