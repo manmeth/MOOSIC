@@ -10,7 +10,7 @@ https://docs.google.com/spreadsheets/d/1KLQCLskJsa34GHOe-BQRSIodMnRDIBdcmh4NvQDD
 
 | Member | Primary responsibilities |
 |---|---|
-| Erin | Firewall / network security; security mechanisms; failure & recovery (application/server and network); Component 14;Frontend for Premium features; Data Base songs and content; security testing/evidence; shared integration, testing and documentation work |
+| Erin | Firewall / network security; security mechanisms; failure & recovery (application/server and network); Component 14(security/network test);Frontend for Premium features; Data Base songs and content; security testing/evidence; shared integration, testing and documentation work |
 | Manmeet | Backend/database; database schema and diagram; database relationships/queries; playlist & Recycle Bin CRUD; business transactions; mood-based playlist ranking algorithm; API–database integration; query/transaction optimisation; shared integration, testing and documentation work |
 | Siya | Component 11 backend; Moo Bot AI-generated playlist-name service; playlist naming API integration/validation; API error handling/logging; Component 14 technical improvement; individual technical evidence; shared integration, testing and documentation work |
 | Srinidhi | Authentication; frontend–backend integration; encryption/data protection; authorization/security controls; failure & recovery (storage/security); Component 14 encryption/auth enhancement; integration testing/bug fixing; quantitative scalability calculations; shared integration, testing and documentation work |
