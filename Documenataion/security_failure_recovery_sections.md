@@ -1,0 +1,37 @@
+**SECURITY:** 
+
+| Security Mechanism              | Component                                           | Purpose                                                                       | Threat Addressed                                               | 
+| ------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------- | 
+| **Authentication**              | FastAPI authentication + JWT                        | Verifies the identity of users before access to protected services.           | Unauthorized account access                                    | 
+| **Authorization**               | Role-based access control + user ownership checks   | Ensures users can only access resources permitted to their role or account.   | Privilege escalation and unauthorized data access              | 
+| **Data protection**             | bcrypt password hashing + environment-based secrets | Protects sensitive credentials and security configuration.                    | Password disclosure and secret exposure                        | 
+| **Network security**            | Firewall middleware + CORS + rate limiting          | Controls incoming requests and restricts excessive or suspicious traffic.     | Malicious requests, abuse and unauthorized cross-origin access | 
+| **Database security**           | SQLAlchemy user-scoped queries and access controls  | Ensures database operations are restricted to authorized users/resources.     | Cross-user data access and data leakage                        | 
+| **Backup/recovery**             | SQLite backup and restore procedure                 | Provides a method to recover persistent data after failure or corruption.     | Data loss                                                      | 
+| **Monitoring/logging**          | `security.log` + security event tracking            | Records important security and access events for detection and investigation. | Undetected attacks and suspicious activity                     | 
+| **Account/password protection** | Minimum password validation + login verification    | Prevents weak credentials and rejects invalid authentication attempts.        | Weak passwords and credential attacks                          | 
+
+**Security implementation:** 
+MOOSIC uses multiple security mechanisms across authentication, authorization, data protection, network security, database security, backup/recovery, monitoring and account protection. User passwords are protected using bcrypt hashing, while JWT-based authentication is used to secure authenticated sessions. Role-based authorization separates normal users from Managers, and user-ownership checks prevent access to another user's private resources. The backend firewall provides rate limiting and suspicious-request detection, while security events are recorded for monitoring. Backup and recovery procedures provide protection against data loss. 
+
+**Evidence:** 
+Security controls were verified using authentication and authorization tests, API responses, database checks, firewall tests and security logging. The firewall tests achieved HTTP 200, 429 and 403 results as expected, and security verification evidence was recorded in the project documentation. 
+
+**FAILURE AND RECOVERY** 
+
+| Failure                | Impact                                                                                         | Detection                                                                                                                       | Recovery                                                                                                                        | 
+| ---------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | 
+| **Application/server** | The MOOSIC backend becomes unavailable, so users cannot access API-based functions.            | Failed API requests, unavailable service/health check and server errors.                                                        | Restart the FastAPI service or move requests to a healthy application instance.                                                 | 
+| **Database**           | User, playlist, song or activity data cannot be read or written correctly.                     | Database/API errors and failed database transactions.                                                                           | Restore the database from a backup and verify that the application can access the restored data.                                | 
+| **Network**            | Users cannot reach the MOOSIC backend even when the application itself is running.             | Connectivity/TCP test failure, timeout or unavailable backend endpoint.                                                         | Restore network/service availability and verify backend connectivity again.                                                     | 
+| **Storage**            | Application assets, backups or other stored files may become unavailable or corrupted.         | File/storage access errors or failed backup/file operations.                                                                    | Restore the required files from backup or move storage to a healthy location.                                                   | 
+| **Security**           | Malicious, excessive or unauthorized requests may threaten system availability or data access. | Firewall events, suspicious-request detection, HTTP 403/429 responses, authentication/authorization failures and security logs. | Block the request, investigate the logged event, restore secure configuration and continue service under the security controls. | 
+
+**Failure and recovery implementation:** 
+MOOSIC considers application/server, database, network, storage and security failures separately so that each failure can be detected and recovered through an appropriate mechanism. The system uses monitoring/logging, authentication and authorization controls, firewall protection, backups and service recovery procedures to reduce the impact of failures. The architecture also proposes redundancy, database replicas, automated backups and monitoring for larger-scale deployment.  
+
+**Network failure test:** 
+A safe local network failure simulation was performed by testing an unavailable service on port 8001. The connectivity test returned `TcpTestSucceeded = False — PASS`. After recovery, the FastAPI backend was tested on port 8000 and returned `TcpTestSucceeded = True — PASS`, confirming that the service was reachable again.  
+
+**Security control test:** 
+Normal requests were processed successfully, excessive requests were blocked with HTTP 429, and suspicious requests were blocked with HTTP 403. These events were also recorded in the security log.
