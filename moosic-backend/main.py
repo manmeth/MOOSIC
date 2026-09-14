@@ -110,6 +110,27 @@ def serialize_song(song):
     return data
 
 
+def unique_songs(songs):
+    """Return one row per logical song so duplicate seed rows do not reach clients."""
+    unique = []
+    seen = set()
+
+    for song in songs:
+        artist_name = song.artist.name if song.artist else ""
+        key = (
+            (song.title or "").strip().casefold(),
+            (artist_name or "").strip().casefold(),
+        )
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+        unique.append(song)
+
+    return unique
+
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
@@ -711,7 +732,17 @@ def seed_demo_music():
 
 @app.on_event("startup")
 def startup_event():
-    seed_demo_music()
+    # Vercel can start several function instances at the same time. Re-running
+    # the demo seeder on an already-populated shared Postgres database creates
+    # duplicate artists/albums/songs. Seed only an empty catalog.
+    db = SessionLocal()
+    try:
+        has_catalog = db.query(models.Song.id).first() is not None
+    finally:
+        db.close()
+
+    if not has_catalog:
+        seed_demo_music()
 
 
 @app.get("/")
@@ -1202,7 +1233,7 @@ def get_songs(
 ):
     # DATABASE OPTIMIZATION: Use eager loading to avoid N+1 queries
     songs = OptimizedQueries.get_all_songs_with_relations(db, offset, limit)
-    return [serialize_song(song) for song in songs]
+    return [serialize_song(song) for song in unique_songs(songs)]
 
 
 @app.get("/songs/genres")
@@ -1238,7 +1269,7 @@ def search_songs(q: str, limit: int = Query(10, ge=1, le=100), db: Session = Dep
         .all()
     )
 
-    return [serialize_song(song) for song in songs]
+    return [serialize_song(song) for song in unique_songs(songs)]
 
 
 
@@ -1283,7 +1314,7 @@ def get_song_playback(song_id: int, db: Session = Depends(get_db)):
 def get_songs_by_genre(genre_name: str, db: Session = Depends(get_db)):
     # DATABASE OPTIMIZATION: Use eager loading for genre-filtered songs
     songs = OptimizedQueries.get_songs_by_genre(db, genre_name)
-    return [serialize_song(song) for song in songs]
+    return [serialize_song(song) for song in unique_songs(songs)]
 
 
 @app.get("/songs/mood/{mood_name}")
@@ -1296,19 +1327,19 @@ def get_songs_by_mood(mood_name: str, limit: int = Query(20, ge=1, le=100), db: 
         genre_preferences={},
         artist_preferences={},
     )
-    return [serialize_song(song) for song in ranked_songs[:limit]]
+    return [serialize_song(song) for song in unique_songs(ranked_songs)[:limit]]
 
 
 @app.get("/songs/language/{language_name}")
 def get_songs_by_language(language_name: str, db: Session = Depends(get_db)):
     # DATABASE OPTIMIZATION: Use eager loading for language-filtered songs
     songs = OptimizedQueries.get_songs_by_language(db, language_name)
-    return [serialize_song(song) for song in songs]
+    return [serialize_song(song) for song in unique_songs(songs)]
 
 
 @app.get("/library")
 def get_library(db: Session = Depends(get_db)):
-    songs = db.query(models.Song).all()
+    songs = unique_songs(db.query(models.Song).all())
     genres = sorted({song.genre for song in songs if song.genre})
     languages = sorted({song.language for song in songs if song.language})
 
