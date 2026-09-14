@@ -78,6 +78,21 @@ type PremiumStatus = {
   status?: string | null;
 };
 
+type ManagerDashboardData = {
+  manager: { user_id: number; name: string; role: string };
+  kpis: {
+    total_users: number;
+    premium_users: number;
+    total_songs: number;
+    total_artists: number;
+    total_albums: number;
+    successful_payments: number;
+    total_revenue: number;
+  };
+};
+type ManagerUser = { id: number; name: string; username: string; email: string; role: string; is_premium: boolean };
+type ManagerPayment = { id: number; user_id: number; plan: string; amount: number; currency: string; status: string; payment_date: string };
+
 type BackendDownload = {
   id: number;
   song_id: number;
@@ -990,7 +1005,7 @@ function Brand() {
   );
 }
 
-function Navigation({ mobile = false }: { mobile?: boolean }) {
+function Navigation({ mobile = false, authUser }: { mobile?: boolean; authUser?: AuthUser | null }) {
   const [location] = useLocation();
   const items = [
     { href: '/home', label: 'Now playing', icon: HomeIcon },
@@ -1001,6 +1016,7 @@ function Navigation({ mobile = false }: { mobile?: boolean }) {
     { href: '/theme', label: 'Custom Theme', icon: Palette },
     { href: '/premium', label: 'Premium', icon: Crown },
     { href: '/profile', label: 'Profile', icon: UserRound },
+    ...(authUser?.role === 'manager' ? [{ href: '/manager', label: 'Manager', icon: Crown }] : []),
   ];
   return (
     <nav className={mobile ? 'mobile-nav' : 'nav-stack'} aria-label="Main navigation">
@@ -1024,7 +1040,7 @@ function Shell({ children, authUser, appBackground, isPremium }: { children: Rea
       <div className="shell-grid">
         <aside className={`side-rail ${isPicker ? 'picker-hidden-rail' : ''}`}>
           <Brand />
-          <Navigation />
+          <Navigation authUser={authUser} />
           <div className="rail-note"><strong>Tonight's note</strong>Music works better when you tell it the truth.</div>
         </aside>
         <main className="main-column">
@@ -4865,6 +4881,587 @@ function ProfilePage({
   );
 }
 
+function ManagerDashboardPage() {
+  const [data, setData] = useState<ManagerDashboardData | null>(null);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    apiRequest('/manager/dashboard')
+      .then((payload) => setData(payload as ManagerDashboardData))
+      .catch((error) => setMessage(error instanceof Error ? error.message : 'Unable to load manager dashboard.'));
+  }, []);
+
+  if (message) {
+    return (
+      <section className="page">
+        <div className="empty-state">
+          <h2>Manager dashboard unavailable.</h2>
+          <p>{message}</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (!data) {
+    return (
+      <section className="page">
+        <div className="empty-state">
+          <h2>Loading manager dashboard…</h2>
+        </div>
+      </section>
+    );
+  }
+
+  const cards = [
+    ['Users', data.kpis.total_users],
+    ['Premium users', data.kpis.premium_users],
+    ['Songs', data.kpis.total_songs],
+    ['Artists', data.kpis.total_artists],
+    ['Albums', data.kpis.total_albums],
+    ['Successful payments', data.kpis.successful_payments],
+    ['Revenue', `€${Number(data.kpis.total_revenue).toFixed(2)}`],
+  ];
+
+  return (
+    <section className="page">
+      <div className="page-heading animate-rise">
+        <div>
+          <div className="eyebrow">Manager / 001</div>
+          <h1>Business<br /><em>dashboard.</em></h1>
+        </div>
+      </div>
+      <p className="muted">Signed in as {data.manager.name} · {data.manager.role}</p>
+      <div className="stat-grid animate-rise-2" style={{ marginTop: 24 }}>
+        {cards.map(([label, value]) => (
+          <div className="stat" key={String(label)}>
+            <b>{String(value)}</b>
+            <span>{label}</span>
+          </div>
+        ))}
+      </div>
+      <div className="hairline" style={{ margin: '30px 0 18px' }} />
+      <p className="muted">Use the Manager navigation to manage users, songs, and payment records.</p>
+    </section>
+  );
+}
+
+function ManagerUsersPage() {
+  const [users, setUsers] = useState<ManagerUser[]>([]);
+  const [message, setMessage] = useState('');
+
+  const load = () =>
+    apiRequest('/manager/users')
+      .then((payload) => {
+        const value = payload && typeof payload === 'object' ? (payload as Record<string, unknown>).users : undefined;
+        setUsers(
+          Array.isArray(payload)
+            ? payload as ManagerUser[]
+            : Array.isArray(value)
+              ? value as ManagerUser[]
+              : [],
+        );
+      })
+      .catch((error) => setMessage(error instanceof Error ? error.message : 'Unable to load users.'));
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const togglePremium = async (user: ManagerUser) => {
+    try {
+      const updated = await apiRequest(`/manager/users/${user.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ is_premium: !user.is_premium }),
+      }) as ManagerUser;
+
+      setUsers((current) => current.map((item) => item.id === user.id ? updated : item));
+      setMessage(`${user.username} is now ${updated.is_premium ? 'Premium' : 'Free'}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to update user.');
+    }
+  };
+
+  return (
+    <section className="page">
+      <div className="eyebrow">Manager / 002</div>
+      <h1 className="section-title" style={{ margin: '15px 0 22px' }}>User<br /><em>management.</em></h1>
+      {message && <p className="muted">{message}</p>}
+      <div className="library-grid">
+        {users.map((user) => (
+          <article className="library-card" key={user.id}>
+            <div className="cover-meta">
+              <div>
+                <h2>{user.name || user.username}</h2>
+                <p>{user.email}</p>
+                <p>{user.role} · {user.is_premium ? 'Premium' : 'Free'}</p>
+              </div>
+              <UserRound size={18} />
+            </div>
+            <div className="card-actions">
+              {user.id > 0 && (
+                <button className="solid-button small-button" onClick={() => void togglePremium(user)}>
+                  {user.is_premium ? 'Set Free' : 'Grant Premium'}
+                </button>
+              )}
+            </div>
+          </article>
+        ))}
+      </div>
+      {users.length === 0 && !message && <div className="empty-state"><h2>No users found.</h2></div>}
+    </section>
+  );
+}
+
+function ManagerSongsPage() {
+  const [songs, setSongs] = useState<BackendSong[]>([]);
+  const [message, setMessage] = useState('');
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [title, setTitle] = useState('');
+  const [mood, setMood] = useState<MoodName>('Neutral');
+
+  const load = () =>
+    apiRequest('/songs?limit=200')
+      .then((payload) => {
+        const value = payload && typeof payload === 'object' ? (payload as Record<string, unknown>).songs : undefined;
+        setSongs(
+          Array.isArray(payload)
+            ? payload as BackendSong[]
+            : Array.isArray(value)
+              ? value as BackendSong[]
+              : [],
+        );
+      })
+      .catch((error) => setMessage(error instanceof Error ? error.message : 'Unable to load songs.'));
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const beginEdit = (song: BackendSong) => {
+    if (typeof song.id !== 'number') return;
+    setEditingId(song.id);
+    setTitle(song.title);
+    setMood((moods.some((item) => item.name === song.mood) ? song.mood : 'Neutral') as MoodName);
+    setMessage('');
+  };
+
+  const saveEdit = async (song: BackendSong) => {
+    if (typeof song.id !== 'number') return;
+
+    try {
+      const updated = await apiRequest(`/manager/songs/${song.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          title: title.trim() || song.title,
+          mood,
+        }),
+      }) as BackendSong;
+
+      setSongs((current) => current.map((item) => item.id === song.id ? { ...item, ...updated } : item));
+      setEditingId(null);
+      setMessage(`Updated ${updated.title ?? song.title}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to update song.');
+    }
+  };
+
+  const removeSong = async (song: BackendSong) => {
+    if (typeof song.id !== 'number') return;
+    if (!window.confirm(`Delete "${song.title}"?`)) return;
+
+    try {
+      await apiRequest(`/manager/songs/${song.id}`, { method: 'DELETE' });
+      setSongs((current) => current.filter((item) => item.id !== song.id));
+      setMessage(`${song.title} deleted.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to delete song.');
+    }
+  };
+
+  return (
+    <section className="page">
+      <div className="eyebrow">Manager / 003</div>
+      <h1 className="section-title" style={{ margin: '15px 0 22px' }}>Song<br /><em>management.</em></h1>
+      {message && <p className="muted">{message}</p>}
+      <div className="result-section">
+        {songs.map((song) => (
+          <div className="result-row" key={song.id ?? song.title}>
+            {editingId === song.id ? (
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1, flexWrap: 'wrap' }}>
+                <input
+                  className="builder-input"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  style={{ flex: 1, minWidth: 220 }}
+                />
+                <select
+                  className="builder-input"
+                  value={mood}
+                  onChange={(event) => setMood(event.target.value as MoodName)}
+                >
+                  {moods.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
+                </select>
+                <button className="solid-button small-button" onClick={() => void saveEdit(song)}>Save</button>
+                <button className="outline-button small-button" onClick={() => setEditingId(null)}>Cancel</button>
+              </div>
+            ) : (
+              <>
+                <div className="result-row-main">
+                  <strong>{song.title}</strong>
+                  <small>{song.artist_name ?? 'Unknown artist'} / {song.mood ?? 'Neutral'}</small>
+                </div>
+                <div className="result-row-actions">
+                  <button className="icon-button" onClick={() => beginEdit(song)} aria-label={`Edit ${song.title}`}>
+                    <Pencil size={14} />
+                  </button>
+                  <button className="icon-button" onClick={() => void removeSong(song)} aria-label={`Delete ${song.title}`}>
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ManagerPaymentsPage() {
+  const [payments, setPayments] = useState<ManagerPayment[]>([]);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    apiRequest('/manager/payments')
+      .then((payload) => {
+        const value = payload && typeof payload === 'object' ? (payload as Record<string, unknown>).payments : undefined;
+        setPayments(
+          Array.isArray(payload)
+            ? payload as ManagerPayment[]
+            : Array.isArray(value)
+              ? value as ManagerPayment[]
+              : [],
+        );
+      })
+      .catch((error) => setMessage(error instanceof Error ? error.message : 'Unable to load payments.'));
+  }, []);
+
+  return (
+    <section className="page">
+      <div className="eyebrow">Manager / 004</div>
+      <h1 className="section-title" style={{ margin: '15px 0 22px' }}>Payment<br /><em>records.</em></h1>
+      {message && <p className="muted">{message}</p>}
+      <div className="result-section">
+        {payments.map((payment) => (
+          <div className="result-row" key={payment.id}>
+            <div className="result-row-main">
+              <strong>{payment.plan}</strong>
+              <small>User #{payment.user_id} / {payment.status} / {new Date(payment.payment_date).toLocaleString()}</small>
+            </div>
+            <strong>{payment.currency} {Number(payment.amount).toFixed(2)}</strong>
+          </div>
+        ))}
+      </div>
+      {payments.length === 0 && !message && <div className="empty-state"><h2>No payment records.</h2></div>}
+    </section>
+  );
+}
+
+function ManagerPage({ onSignOut }: { onSignOut: () => void }) {
+  const [dashboard, setDashboard] = useState<ManagerDashboardData | null>(null);
+  const [users, setUsers] = useState<ManagerUser[]>([]);
+  const [songs, setSongs] = useState<BackendSong[]>([]);
+  const [payments, setPayments] = useState<ManagerPayment[]>([]);
+  const [message, setMessage] = useState('');
+  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'songs' | 'payments'>('overview');
+  const [editingSongId, setEditingSongId] = useState<number | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
+  const [editingMood, setEditingMood] = useState<MoodName>('Neutral');
+
+  const loadManagerData = async () => {
+    setMessage('');
+    try {
+      const [dashboardPayload, usersPayload, songsPayload, paymentsPayload] = await Promise.all([
+        apiRequest('/manager/dashboard'),
+        apiRequest('/manager/users'),
+        apiRequest('/songs?limit=200'),
+        apiRequest('/manager/payments'),
+      ]);
+
+      const usersValue = usersPayload && typeof usersPayload === 'object'
+        ? (usersPayload as Record<string, unknown>).users
+        : undefined;
+      const songsValue = songsPayload && typeof songsPayload === 'object'
+        ? (songsPayload as Record<string, unknown>).songs
+        : undefined;
+      const paymentsValue = paymentsPayload && typeof paymentsPayload === 'object'
+        ? (paymentsPayload as Record<string, unknown>).payments
+        : undefined;
+
+      setDashboard(dashboardPayload as ManagerDashboardData);
+      setUsers(
+        Array.isArray(usersPayload)
+          ? usersPayload as ManagerUser[]
+          : Array.isArray(usersValue)
+            ? usersValue as ManagerUser[]
+            : [],
+      );
+      setSongs(
+        Array.isArray(songsPayload)
+          ? songsPayload as BackendSong[]
+          : Array.isArray(songsValue)
+            ? songsValue as BackendSong[]
+            : [],
+      );
+      setPayments(
+        Array.isArray(paymentsPayload)
+          ? paymentsPayload as ManagerPayment[]
+          : Array.isArray(paymentsValue)
+            ? paymentsValue as ManagerPayment[]
+            : [],
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to load manager dashboard.');
+    }
+  };
+
+  useEffect(() => {
+    void loadManagerData();
+  }, []);
+
+  const togglePremium = async (user: ManagerUser) => {
+    try {
+      const updated = await apiRequest(`/manager/users/${user.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ is_premium: !user.is_premium }),
+      }) as ManagerUser;
+      setUsers((current) => current.map((item) => item.id === user.id ? updated : item));
+      setMessage(`${user.username} is now ${updated.is_premium ? 'Premium' : 'Free'}.`);
+      const refreshed = await apiRequest('/manager/dashboard') as ManagerDashboardData;
+      setDashboard(refreshed);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to update user.');
+    }
+  };
+
+  const beginEditSong = (song: BackendSong) => {
+    if (typeof song.id !== 'number') return;
+    setEditingSongId(song.id);
+    setEditingTitle(song.title);
+    setEditingMood((moods.some((item) => item.name === song.mood) ? song.mood : 'Neutral') as MoodName);
+    setMessage('');
+  };
+
+  const saveSong = async (song: BackendSong) => {
+    if (typeof song.id !== 'number') return;
+    try {
+      const updated = await apiRequest(`/manager/songs/${song.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          title: editingTitle.trim() || song.title,
+          mood: editingMood,
+        }),
+      }) as BackendSong;
+      setSongs((current) => current.map((item) => item.id === song.id ? { ...item, ...updated } : item));
+      setEditingSongId(null);
+      setMessage(`Updated ${updated.title ?? song.title}.`);
+      const refreshed = await apiRequest('/manager/dashboard') as ManagerDashboardData;
+      setDashboard(refreshed);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to update song.');
+    }
+  };
+
+  const removeSong = async (song: BackendSong) => {
+    if (typeof song.id !== 'number') return;
+    if (!window.confirm(`Delete "${song.title}"?`)) return;
+    try {
+      await apiRequest(`/manager/songs/${song.id}`, { method: 'DELETE' });
+      setSongs((current) => current.filter((item) => item.id !== song.id));
+      setMessage(`${song.title} deleted.`);
+      const refreshed = await apiRequest('/manager/dashboard') as ManagerDashboardData;
+      setDashboard(refreshed);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to delete song.');
+    }
+  };
+
+  if (!dashboard) {
+    return (
+      <section className="page manager-dashboard-page">
+        <div className="eyebrow">MOOSIC / MANAGER</div>
+        <h1 className="display-title">Manager<br /><em>dashboard.</em></h1>
+        {message ? <p className="muted">{message}</p> : <p className="muted">Loading business data…</p>}
+        <button className="outline-button small-button" onClick={onSignOut}>Sign out</button>
+      </section>
+    );
+  }
+
+  const cards = [
+    ['Users', dashboard.kpis.total_users],
+    ['Premium users', dashboard.kpis.premium_users],
+    ['Songs', dashboard.kpis.total_songs],
+    ['Artists', dashboard.kpis.total_artists],
+    ['Albums', dashboard.kpis.total_albums],
+    ['Successful payments', dashboard.kpis.successful_payments],
+    ['Revenue', `€${Number(dashboard.kpis.total_revenue).toFixed(2)}`],
+  ];
+
+  const tabButtonStyle = (active: boolean) => ({
+    border: `1px solid ${active ? '#f1bc46' : 'rgba(247,239,205,.22)'}`,
+    background: active ? 'rgba(241,188,70,.12)' : 'transparent',
+    color: active ? '#f1bc46' : 'var(--app-foreground, #f7efcd)',
+    padding: '10px 15px',
+    cursor: 'pointer',
+    fontSize: 12,
+    letterSpacing: '.08em',
+    textTransform: 'uppercase' as const,
+  });
+
+  return (
+    <section className="page manager-dashboard-page">
+      <div className="page-heading animate-rise">
+        <div>
+          <div className="eyebrow">MOOSIC / MANAGER</div>
+          <h1>Business<br /><em>dashboard.</em></h1>
+          <p className="muted">Signed in as {dashboard.manager.name} · manager</p>
+        </div>
+        <button className="outline-button small-button" onClick={onSignOut}>Sign out</button>
+      </div>
+
+      {message && <p className="muted" role="status">{message}</p>}
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '24px 0 28px' }}>
+        {([
+          ['overview', 'Overview'],
+          ['users', 'Users'],
+          ['songs', 'Songs'],
+          ['payments', 'Payments'],
+        ] as const).map(([tab, label]) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => setActiveTab(tab)}
+            style={tabButtonStyle(activeTab === tab)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'overview' && (
+        <div>
+          <div className="stat-grid animate-rise-2">
+            {cards.map(([label, value]) => (
+              <div className="stat" key={String(label)}>
+                <b>{String(value)}</b>
+                <span>{label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="hairline" style={{ margin: '34px 0 24px' }} />
+          <p className="muted">Use the tabs above to manage users, songs, and payment records.</p>
+        </div>
+      )}
+
+      {activeTab === 'users' && (
+        <div>
+          <div className="eyebrow">Business records / 001</div>
+          <h2 className="section-title" style={{ margin: '12px 0 18px' }}>User<br /><em>management.</em></h2>
+          <div className="library-grid">
+            {users.map((user) => (
+              <article className="library-card" key={user.id}>
+                <div className="cover-meta">
+                  <div>
+                    <h2>{user.name || user.username}</h2>
+                    <p>{user.email}</p>
+                    <p>{user.role} · {user.is_premium ? 'Premium' : 'Free'}</p>
+                  </div>
+                  <UserRound size={18} />
+                </div>
+                <div className="card-actions">
+                  {user.role !== 'manager' && (
+                    <button className="solid-button small-button" onClick={() => void togglePremium(user)}>
+                      {user.is_premium ? 'Set Free' : 'Grant Premium'}
+                    </button>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+          {users.length === 0 && <div className="empty-state"><h2>No users found.</h2></div>}
+        </div>
+      )}
+
+      {activeTab === 'songs' && (
+        <div>
+          <div className="eyebrow">Business records / 002</div>
+          <h2 className="section-title" style={{ margin: '12px 0 18px' }}>Song<br /><em>management.</em></h2>
+          <div className="result-section">
+            {songs.map((song) => (
+              <div className="result-row" key={song.id ?? song.title}>
+                {editingSongId === song.id ? (
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1, flexWrap: 'wrap' }}>
+                    <input
+                      className="builder-input"
+                      value={editingTitle}
+                      onChange={(event) => setEditingTitle(event.target.value)}
+                      style={{ flex: 1, minWidth: 220 }}
+                    />
+                    <select
+                      className="builder-input"
+                      value={editingMood}
+                      onChange={(event) => setEditingMood(event.target.value as MoodName)}
+                    >
+                      {moods.map((item) => <option key={item.name} value={item.name}>{item.name}</option>)}
+                    </select>
+                    <button className="solid-button small-button" onClick={() => void saveSong(song)}>Save</button>
+                    <button className="outline-button small-button" onClick={() => setEditingSongId(null)}>Cancel</button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="result-row-main">
+                      <strong>{song.title}</strong>
+                      <small>{song.artist_name ?? 'Unknown artist'} / {song.mood ?? 'Neutral'}</small>
+                    </div>
+                    <div className="result-row-actions">
+                      <button className="icon-button" onClick={() => beginEditSong(song)} aria-label={`Edit ${song.title}`}>
+                        <Pencil size={14} />
+                      </button>
+                      <button className="icon-button" onClick={() => void removeSong(song)} aria-label={`Delete ${song.title}`}>
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+          {songs.length === 0 && <div className="empty-state"><h2>No songs found.</h2></div>}
+        </div>
+      )}
+
+      {activeTab === 'payments' && (
+        <div>
+          <div className="eyebrow">Business records / 003</div>
+          <h2 className="section-title" style={{ margin: '12px 0 18px' }}>Payment<br /><em>records.</em></h2>
+          <div className="result-section">
+            {payments.map((payment) => (
+              <div className="result-row" key={payment.id}>
+                <div className="result-row-main">
+                  <strong>{payment.plan}</strong>
+                  <small>User #{payment.user_id} / {payment.status} / {new Date(payment.payment_date).toLocaleString()}</small>
+                </div>
+                <strong>{payment.currency} {Number(payment.amount).toFixed(2)}</strong>
+              </div>
+            ))}
+          </div>
+          {payments.length === 0 && <div className="empty-state"><h2>No payment records.</h2></div>}
+        </div>
+      )}
+    </section>
+  );
+}
 function Router({
   authUser,
   setAuthUser,
@@ -5669,6 +6266,9 @@ function Router({
       authMode={authMode}
       setAuthMode={setAuthMode}
     >
+      {authUser?.role === 'manager' ? (
+        <ManagerPage onSignOut={signOut} />
+      ) : (
       <Shell
         authUser={authUser as AuthUser}
         isPremium={Boolean(premiumStatus?.is_premium)}
@@ -5805,12 +6405,19 @@ function Router({
               />
             </Route>
 
+
+            {authUser?.role === 'manager' && (
+              <Route path="/manager">
+                <ManagerPage onSignOut={signOut} />
+              </Route>
+            )}
             <Route>
               <NotFound />
             </Route>
           </Switch>
         </ErrorBoundary>
       </Shell>
+      )}
     </AuthGate>
   );
 }
