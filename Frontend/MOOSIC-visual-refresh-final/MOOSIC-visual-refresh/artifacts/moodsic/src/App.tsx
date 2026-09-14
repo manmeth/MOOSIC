@@ -1425,7 +1425,7 @@ function HomePage({
       await apiRequest(
         `/users/${userId}/listening-history/${historyId}`,
         {
-          method: 'PATCH',
+          method: 'PUT',
           body: JSON.stringify({
             progress_seconds: progressSeconds,
             completed,

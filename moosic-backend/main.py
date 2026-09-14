@@ -2138,7 +2138,7 @@ def get_listening_history(
     return [serialize_model(item) for item in history]
 
 
-@app.patch("/users/{user_id}/listening-history/{history_id}")
+@app.put("/users/{user_id}/listening-history/{history_id}")
 def update_listening_history(
     user_id: int,
     history_id: int,
