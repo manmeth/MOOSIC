@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import os
+import sqlite3
 from pathlib import Path
 from urllib.parse import quote_plus
 
@@ -731,6 +732,199 @@ def seed_demo_music():
 
 
 
+
+def migrate_legacy_sqlite_catalog():
+    """
+    Copy the old working SQLite music catalogue bundled with the repo into the
+    production database. This restores legacy songs/audio URLs after moving the
+    app from SQLite to Neon/Postgres.
+
+    It is intentionally idempotent: existing songs are updated rather than
+    duplicated.
+    """
+    legacy_path = Path(__file__).resolve().parent / "moosic.db"
+
+    if not legacy_path.is_file():
+        print("Legacy catalogue migration skipped: moosic.db was not found.")
+        return
+
+    try:
+        legacy = sqlite3.connect(str(legacy_path))
+        legacy.row_factory = sqlite3.Row
+
+        song_columns = {
+            row["name"]
+            for row in legacy.execute("PRAGMA table_info(songs)").fetchall()
+        }
+
+        if not song_columns:
+            print("Legacy catalogue migration skipped: songs table was not found.")
+            legacy.close()
+            return
+
+        optional_song_fields = {
+            "mood": "s.mood AS mood" if "mood" in song_columns else "NULL AS mood",
+            "language": (
+                "s.language AS language"
+                if "language" in song_columns
+                else "'English' AS language"
+            ),
+            "is_playable": (
+                "s.is_playable AS is_playable"
+                if "is_playable" in song_columns
+                else "NULL AS is_playable"
+            ),
+        }
+
+        rows = legacy.execute(
+            f"""
+            SELECT
+                s.title AS title,
+                s.genre AS genre,
+                {optional_song_fields["mood"]},
+                {optional_song_fields["language"]},
+                s.duration AS duration,
+                s.audio_url AS audio_url,
+                s.cover_url AS cover_url,
+                {optional_song_fields["is_playable"]},
+                a.name AS artist_name,
+                a.image_url AS artist_image_url,
+                al.title AS album_title,
+                al.release_date AS album_release_date,
+                al.cover_url AS album_cover_url
+            FROM songs s
+            LEFT JOIN artists a ON a.id = s.artist_id
+            LEFT JOIN albums al ON al.id = s.album_id
+            ORDER BY s.id
+            """
+        ).fetchall()
+
+        db = SessionLocal()
+        try:
+            migrated = 0
+            updated = 0
+            seen = set()
+
+            for row in rows:
+                title = (row["title"] or "").strip()
+                artist_name = (row["artist_name"] or "Unknown artist").strip()
+
+                if not title:
+                    continue
+
+                logical_key = (title.casefold(), artist_name.casefold())
+                if logical_key in seen:
+                    continue
+                seen.add(logical_key)
+
+                artist = (
+                    db.query(models.Artist)
+                    .filter(models.Artist.name == artist_name)
+                    .first()
+                )
+
+                if not artist:
+                    artist = models.Artist(
+                        name=artist_name,
+                        image_url=row["artist_image_url"],
+                    )
+                    db.add(artist)
+                    db.flush()
+
+                album = None
+                album_title = (row["album_title"] or "").strip()
+
+                if album_title:
+                    album = (
+                        db.query(models.Album)
+                        .filter(
+                            models.Album.title == album_title,
+                            models.Album.artist_id == artist.id,
+                        )
+                        .first()
+                    )
+
+                    if not album:
+                        album = models.Album(
+                            title=album_title,
+                            artist_id=artist.id,
+                            release_date=row["album_release_date"],
+                            cover_url=row["album_cover_url"],
+                        )
+                        db.add(album)
+                        db.flush()
+
+                song = (
+                    db.query(models.Song)
+                    .filter(
+                        models.Song.title == title,
+                        models.Song.artist_id == artist.id,
+                    )
+                    .first()
+                )
+
+                legacy_url = (row["audio_url"] or "").strip() or None
+
+                if song:
+                    changed = False
+
+                    # The old local SQLite database is the catalogue that was
+                    # used when playback worked, so restore its URL when present.
+                    if legacy_url and song.audio_url != legacy_url:
+                        song.audio_url = legacy_url
+                        changed = True
+
+                    for attr, value in (
+                        ("album_id", album.id if album else song.album_id),
+                        ("genre", row["genre"]),
+                        ("mood", row["mood"]),
+                        ("language", row["language"] or "English"),
+                        ("duration", row["duration"]),
+                        ("cover_url", row["cover_url"]),
+                    ):
+                        if value is not None and getattr(song, attr, None) != value:
+                            setattr(song, attr, value)
+                            changed = True
+
+                    if legacy_url and getattr(song, "is_playable", None) is not True:
+                        song.is_playable = True
+                        changed = True
+
+                    if changed:
+                        updated += 1
+
+                    continue
+
+                song = models.Song(
+                    title=title,
+                    artist_id=artist.id,
+                    album_id=album.id if album else None,
+                    genre=row["genre"],
+                    mood=row["mood"],
+                    language=row["language"] or "English",
+                    duration=row["duration"],
+                    audio_url=legacy_url,
+                    cover_url=row["cover_url"],
+                    is_playable=True if legacy_url else None,
+                )
+                db.add(song)
+                migrated += 1
+
+            db.commit()
+            print(
+                f"Legacy catalogue migration complete: "
+                f"{migrated} added, {updated} updated."
+            )
+        finally:
+            db.close()
+            legacy.close()
+
+    except Exception as exc:
+        # Do not make the whole API unavailable if the legacy import encounters
+        # an unexpected old schema. The app can still use its normal catalogue.
+        print(f"Legacy catalogue migration warning: {exc}")
+
+
 KNOWN_AUDIO_REPAIRS = {
     "Sunny Sunny": "https://www.youtube.com/embed/MXJCnccDLA0",
     "Manali Trance": "https://www.youtube.com/embed/6GrtI-9hNBE",
@@ -779,6 +973,12 @@ def startup_event():
     if not has_catalog:
         seed_demo_music()
 
+    # Restore the complete catalogue/audio URLs that existed in the original
+    # SQLite version before the project moved to Neon/Postgres.
+    migrate_legacy_sqlite_catalog()
+
+    # Apply known replacements after the migration so stale legacy video IDs
+    # cannot overwrite the repaired production URLs.
     repair_known_audio_urls()
 
 
