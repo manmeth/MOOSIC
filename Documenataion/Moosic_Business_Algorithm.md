@@ -8,10 +8,6 @@ Moosic's current implementation includes three main product features that differ
 2. Dynamic mood-based colour themes.
 3. Recycle Bin — playlist recovery and deletion management.
 
-For the CIA III business-algorithm requirement, the strongest current non-trivial processing feature is **Moo Bot's AI-assisted playlist-name generation and validation flow**. The recommendation/personalisation system discussed in the scalability documentation is a **future large-scale enhancement**, not a claim about the current implementation.
-
-The rubric requires the algorithm/non-trivial processing to explain the problem, inputs, processing logic, output, logic/pseudocode, code location, and an example input/output.
-
 ---
 
 ## 2. Current Business Problem
@@ -293,9 +289,3 @@ Moo Bot
 Dynamic Mood-Based Colour Themes
 Recycle Bin
 ```
-
-For the CIA III business-algorithm requirement, **Moo Bot's AI-assisted playlist-name generation and validation workflow** is the most appropriate current non-trivial processing mechanism.
-
-The recommendation/personalisation system should be documented separately under **future scalability enhancement**, rather than being described as a current feature that Moosic already provides.
-
-This distinction keeps the technical documentation aligned with the current implementation while still showing how the system could evolve as the user base grows.
