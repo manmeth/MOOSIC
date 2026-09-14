@@ -363,7 +363,7 @@ def seed_demo_music():
                         "release_date": "2020-03-27",
                         "cover_url": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1",
                         "songs": [
-                            {"title": "Levitating", "genre": "Dance Pop", "language": "English", "duration": 203, "audio_url": "https://www.youtube.com/embed/TUVcZfQe-Kw", "cover_url": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1"},
+                            {"title": "Levitating", "genre": "Dance Pop", "language": "English", "duration": 203, "audio_url": "https://www.youtube.com/embed/N000qglmmY0", "cover_url": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1"},
                             {"title": "Don't Start Now", "genre": "Dance Pop", "language": "English", "duration": 183, "audio_url": "https://www.youtube.com/embed/oygrmJFVQkc", "cover_url": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1"},
                             {"title": "Physical", "genre": "Synth Pop", "language": "English", "duration": 191, "audio_url": "https://www.youtube.com/embed/gNlKcRqqoHM", "cover_url": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1"},
                         ],
@@ -500,9 +500,9 @@ def seed_demo_music():
                         "release_date": "2015-03-20",
                         "cover_url": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1",
                         "songs": [
-                            {"title": "Sunny Sunny", "genre": "Pop", "language": "Hindi", "duration": 241, "audio_url": "https://www.youtube.com/embed/zs9-s0dVcHU", "cover_url": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1"},
-                            {"title": "Manali Trance", "genre": "Dance", "language": "Hindi", "duration": 258, "audio_url": "https://www.youtube.com/embed/2jTb6NF0yN8", "cover_url": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1"},
-                            {"title": "London Thumakda", "genre": "Pop", "language": "Hindi", "duration": 264, "audio_url": "https://www.youtube.com/embed/QzVtL6H_6O8", "cover_url": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1"},
+                            {"title": "Sunny Sunny", "genre": "Pop", "language": "Hindi", "duration": 241, "audio_url": "https://www.youtube.com/embed/MXJCnccDLA0", "cover_url": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1"},
+                            {"title": "Manali Trance", "genre": "Dance", "language": "Hindi", "duration": 258, "audio_url": "https://www.youtube.com/embed/6GrtI-9hNBE", "cover_url": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1"},
+                            {"title": "London Thumakda", "genre": "Pop", "language": "Hindi", "duration": 264, "audio_url": "https://www.youtube.com/embed/udra3Mfw2oo", "cover_url": "https://images.unsplash.com/photo-1524504388940-b1c1722653e1"},
                         ],
                     }
                 ],
@@ -622,7 +622,7 @@ def seed_demo_music():
                         "release_date": "2008-11-12",
                         "cover_url": "https://images.unsplash.com/photo-1516280440614-37939bbacd81",
                         "songs": [
-                            {"title": "Jai Ho", "genre": "Pop", "language": "Hindi", "duration": 243, "audio_url": "https://www.youtube.com/embed/VEG5-sVnc6M", "cover_url": "https://images.unsplash.com/photo-1516280440614-37939bbacd81"},
+                            {"title": "Jai Ho", "genre": "Pop", "language": "Hindi", "duration": 243, "audio_url": "https://www.youtube.com/embed/2R3XstG35sE", "cover_url": "https://images.unsplash.com/photo-1516280440614-37939bbacd81"},
                             {"title": "Rn Samayal", "genre": "Classical", "language": "Hindi", "duration": 256, "audio_url": "https://www.youtube.com/embed/2N7Ar2kGpDY", "cover_url": "https://images.unsplash.com/photo-1516280440614-37939bbacd81"},
                         ],
                     }
@@ -730,6 +730,41 @@ def seed_demo_music():
         db.close()
 
 
+
+KNOWN_AUDIO_REPAIRS = {
+    "Sunny Sunny": "https://www.youtube.com/embed/MXJCnccDLA0",
+    "Manali Trance": "https://www.youtube.com/embed/6GrtI-9hNBE",
+    "London Thumakda": "https://www.youtube.com/embed/udra3Mfw2oo",
+    "Jai Ho": "https://www.youtube.com/embed/2R3XstG35sE",
+    "Levitating": "https://www.youtube.com/embed/N000qglmmY0",
+}
+
+KNOWN_UNPLAYABLE_TITLES = {
+    # This catalogue row does not currently map to a reliable embeddable source.
+    "Khuda ke Liye",
+}
+
+
+def repair_known_audio_urls():
+    """Repair known stale video ids in an existing shared production database."""
+    db = SessionLocal()
+    try:
+        for title, audio_url in KNOWN_AUDIO_REPAIRS.items():
+            rows = db.query(models.Song).filter(models.Song.title == title).all()
+            for song in rows:
+                song.audio_url = audio_url
+                song.is_playable = True
+
+        for title in KNOWN_UNPLAYABLE_TITLES:
+            rows = db.query(models.Song).filter(models.Song.title == title).all()
+            for song in rows:
+                song.is_playable = False
+
+        db.commit()
+    finally:
+        db.close()
+
+
 @app.on_event("startup")
 def startup_event():
     # Vercel can start several function instances at the same time. Re-running
@@ -743,6 +778,8 @@ def startup_event():
 
     if not has_catalog:
         seed_demo_music()
+
+    repair_known_audio_urls()
 
 
 @app.get("/")

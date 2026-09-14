@@ -229,19 +229,95 @@ function backendSongToTrack(song: BackendSong): Track {
 }
 
 
-function dedupeTracks(tracks: Track[]) {
-  const seen = new Set<string>();
+const FALLBACK_HINDI_TITLES = new Set([
+  'Subhanallah',
+  'Tum Hi Ho',
+  'Bandhu',
+  'Uff Teri Adaa',
+  'Dil Dhadakne Do',
+  'Phir Kabhi',
+  'Choo Lo',
+  'Jeena Jeena',
+  'Aaoge Jab Tum',
+  'Barsaat',
+  'Mere Bina',
+  'Soch Na Sake',
+  'Tum Ho Toh',
+  'Kasoor',
+  'Kaisi Hai Ye Rut',
+  'Tum Se Hi',
+  'Safarnama',
+  'Jaane Woh Kaise Log The',
+  'Kun Faya Kun',
+  'Bekhayali',
+  'Sadda Haq',
+  'Udta Punjab',
+  'Rock On!!',
+  'Zinda',
+  'Khoon Mein Teri Mitti',
+]);
 
-  return tracks.filter((track) => {
-    const key = `${track.title.trim().toLowerCase()}::${track.artist.trim().toLowerCase()}`;
+function normalizeTrackTitle(value: string) {
+  return value
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
 
-    if (seen.has(key)) {
-      return false;
+function mergeBackendWithFallback(backendTracks: Track[]) {
+  const backendByTitle = new Map<string, Track>();
+
+  for (const track of backendTracks) {
+    const key = normalizeTrackTitle(track.title);
+    const current = backendByTitle.get(key);
+
+    // Prefer a row that actually has a playback URL.
+    if (!current || (!current.audioUrl && track.audioUrl)) {
+      backendByTitle.set(key, track);
+    }
+  }
+
+  const fallbackEnriched = fallbackTracks.map((fallback) => {
+    const backend = backendByTitle.get(normalizeTrackTitle(fallback.title));
+    const fallbackLanguage = FALLBACK_HINDI_TITLES.has(fallback.title)
+      ? 'Hindi'
+      : 'English';
+
+    if (!backend) {
+      return {
+        ...fallback,
+        language: fallback.language ?? fallbackLanguage,
+      };
     }
 
+    return {
+      ...fallback,
+      id: backend.id,
+      artist: backend.artist || fallback.artist,
+      duration:
+        backend.duration && backend.duration !== '--:--'
+          ? backend.duration
+          : fallback.duration,
+      language: backend.language ?? fallback.language ?? fallbackLanguage,
+      genre: backend.genre ?? fallback.genre,
+      audioUrl: backend.audioUrl ?? fallback.audioUrl,
+      coverUrl: backend.coverUrl ?? fallback.coverUrl,
+    };
+  });
+
+  const seen = new Set(
+    fallbackEnriched.map((track) => normalizeTrackTitle(track.title))
+  );
+
+  const backendExtras = backendTracks.filter((track) => {
+    const key = normalizeTrackTitle(track.title);
+    if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+
+  return [...fallbackEnriched, ...backendExtras];
 }
 
 function buildDefaultPlaylists(catalog: Track[]): Playlist[] {
@@ -1277,7 +1353,6 @@ function HomePage({
   const playerStateHandlerRef = useRef<(state: number) => void>(() => {});
   const advanceTrackRef = useRef<(direction: 1 | -1, automatic?: boolean) => void>(() => {});
   const playHistoryRef = useRef<number[]>([]);
-  const failedVideoIdsRef = useRef<Set<string>>(new Set());
 
   const historyIdRef = useRef<number | null>(null);
   const historySongIdRef = useRef<number | null>(null);
@@ -1578,10 +1653,7 @@ function HomePage({
 
     const playableIndexes = queue
       .map((track, index) => ({ track, index }))
-      .filter(({ track }) => {
-        const videoId = extractYouTubeVideoId(track.audioUrl);
-        return Boolean(videoId && !failedVideoIdsRef.current.has(videoId));
-      })
+      .filter(({ track }) => Boolean(extractYouTubeVideoId(track.audioUrl)))
       .map(({ index }) => index);
 
     if (playableIndexes.length === 0) return -1;
@@ -1980,12 +2052,6 @@ function HomePage({
       setIsPlaying(true);
       isPlayingRef.current = true;
       const track = currentTrackRef.current;
-      const videoId = extractYouTubeVideoId(track?.audioUrl);
-
-      if (videoId) {
-        failedVideoIdsRef.current.delete(videoId);
-      }
-
       if (track) beginListeningSession(track);
       return;
     }
@@ -2025,8 +2091,8 @@ function HomePage({
           width: '200',
           playerVars: {
             autoplay: 0,
-            controls: 1,
-            disablekb: 0,
+            controls: 0,
+            disablekb: 1,
             enablejsapi: 1,
             playsinline: 1,
             rel: 0,
@@ -2061,33 +2127,10 @@ function HomePage({
             onStateChange: (event: any) => {
               playerStateHandlerRef.current(event.data);
             },
-            onError: (event: any) => {
+            onError: () => {
               setIsPlaying(false);
               isPlayingRef.current = false;
-
-              const failedTrack = currentTrackRef.current;
-              const failedVideoId = extractYouTubeVideoId(failedTrack?.audioUrl);
-              const errorCode = Number(event?.data);
-
-              if (failedVideoId) {
-                failedVideoIdsRef.current.add(failedVideoId);
-              }
-
-              console.error('YouTube playback error:', {
-                errorCode,
-                title: failedTrack?.title,
-                videoId: failedVideoId,
-              });
-
-              setNotice(
-                failedTrack
-                  ? `YouTube could not play "${failedTrack.title}". Trying the next track...`
-                  : 'YouTube could not play this track. Trying the next track...'
-              );
-
-              window.setTimeout(() => {
-                advanceTrackRef.current(1, true);
-              }, 250);
+              setNotice('YouTube could not play this track. Try another song.');
             },
           },
         });
@@ -2158,17 +2201,17 @@ function HomePage({
   const playerFrame = (
     <div
       ref={playerContainerRef}
-      aria-label="YouTube playback"
+      aria-hidden="true"
       style={{
         position: 'fixed',
-        right: 18,
-        top: 78,
+        left: '-10000px',
+        top: '-10000px',
         width: '200px',
         height: '200px',
-        zIndex: 95,
-        background: '#000',
-        border: '1px solid rgba(255,255,255,.18)',
-        boxShadow: '0 14px 42px rgba(0,0,0,.30)',
+        opacity: 0,
+        pointerEvents: 'none',
+        border: 0,
+        overflow: 'hidden',
       }}
     />
   );
@@ -5858,26 +5901,25 @@ function Router({
         const songs: BackendSong[] =
           await response.json();
 
-        const backendTracks = dedupeTracks(
-          songs
-            .filter((song) =>
-              Boolean(
-                song.title &&
-                song.audio_url &&
-                song.is_playable !== false
-              )
+        const backendTracks = songs
+          .filter((song) =>
+            Boolean(
+              song.title &&
+              song.audio_url &&
+              song.is_playable !== false
             )
-            .map(backendSongToTrack)
-        );
+          )
+          .map(backendSongToTrack);
 
-        if (
-          !active ||
-          backendTracks.length === 0
-        ) {
+        if (!active) {
           return;
         }
 
-        setCatalog(backendTracks);
+        // Keep the original MOOSIC catalogue visible, then enrich it with
+        // backend ids/audio URLs and append additional backend songs.
+        const activeCatalog = mergeBackendWithFallback(backendTracks);
+
+        setCatalog(activeCatalog);
 
         if (Number.isFinite(numericUserId)) {
           const [
@@ -5886,12 +5928,12 @@ function Router({
           ] = await Promise.all([
             fetchUserPlaylists(
               numericUserId,
-              backendTracks,
+              activeCatalog,
               false
             ),
             fetchUserPlaylists(
               numericUserId,
-              backendTracks,
+              activeCatalog,
               true
             ),
           ]);
@@ -5903,7 +5945,7 @@ function Router({
           setLibrary([
             ...savedPlaylists,
             ...buildDefaultPlaylists(
-              backendTracks
+              activeCatalog
             ),
           ]);
 
@@ -5913,7 +5955,7 @@ function Router({
         } else {
           setLibrary(
             buildDefaultPlaylists(
-              backendTracks
+              activeCatalog
             )
           );
           setDeletedPlaylists([]);
