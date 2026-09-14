@@ -64,3 +64,19 @@ Database:I’m making a project called Moosic, a personalized music streaming ap
 -how to remove this unplayable song
 
 
+| Task                 | Brief summary of AI prompt / request                                                                                                                                |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Authentication       | “Implement user registration and login with secure password hashing and JWT authentication.”                                                                        |
+| Authorization        | “Add role-based authorization for User and Manager and restrict users to their own data.”                                                                           |
+| Security             | “Implement and test security controls including password protection, JWT, CORS, database security, logging and backup/recovery.”                                    |
+| Premium              | “Implement Premium subscription, payment handling, Premium status and cancellation in the backend.”                                                                 |
+| Offline Downloads    | “Create Premium-only offline download functionality with database storage and APIs for adding, viewing and deleting downloads.”                                     |
+| Manager Backend      | “Build protected Manager APIs for dashboard statistics, user management, song management and payment records.”                                                      |
+| Manager Frontend     | “Integrate the Manager dashboard into the existing `moodsic` frontend without changing the existing user-side application.”                                         |
+| Themes / UI          | “Update theme/background behaviour so selected colours apply correctly and text/icons remain readable.”                                                             |
+| Music Playback       | “Implement/integrate music playback using the YouTube IFrame API with custom controls and no visible YouTube player.”                                               |
+| Listening History    | “Implement persistent listening-history creation and progress updates through the backend.”                                                                         |
+| Debugging            | “Debug the listening-history 405 error and modify the update request so it works correctly in the project environment.”                                             |
+| Integration Testing  | “Test the complete system end-to-end, including authentication, authorization, Premium, downloads, Manager functions, playlists and playback.”                      |
+| GitHub / Integration | “Review the completed changes, integrate them into the current project, verify them through testing, and commit the working implementation and database to GitHub.” |
+
