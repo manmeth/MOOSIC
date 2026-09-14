@@ -229,97 +229,6 @@ function backendSongToTrack(song: BackendSong): Track {
 }
 
 
-const FALLBACK_HINDI_TITLES = new Set([
-  'Subhanallah',
-  'Tum Hi Ho',
-  'Bandhu',
-  'Uff Teri Adaa',
-  'Dil Dhadakne Do',
-  'Phir Kabhi',
-  'Choo Lo',
-  'Jeena Jeena',
-  'Aaoge Jab Tum',
-  'Barsaat',
-  'Mere Bina',
-  'Soch Na Sake',
-  'Tum Ho Toh',
-  'Kasoor',
-  'Kaisi Hai Ye Rut',
-  'Tum Se Hi',
-  'Safarnama',
-  'Jaane Woh Kaise Log The',
-  'Kun Faya Kun',
-  'Bekhayali',
-  'Sadda Haq',
-  'Udta Punjab',
-  'Rock On!!',
-  'Zinda',
-  'Khoon Mein Teri Mitti',
-]);
-
-function normalizeTrackTitle(value: string) {
-  return value
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]/g, '');
-}
-
-function mergeBackendWithFallback(backendTracks: Track[]) {
-  const backendByTitle = new Map<string, Track>();
-
-  for (const track of backendTracks) {
-    const key = normalizeTrackTitle(track.title);
-    const current = backendByTitle.get(key);
-
-    // Prefer a row that actually has a playback URL.
-    if (!current || (!current.audioUrl && track.audioUrl)) {
-      backendByTitle.set(key, track);
-    }
-  }
-
-  const fallbackEnriched = fallbackTracks.map((fallback) => {
-    const backend = backendByTitle.get(normalizeTrackTitle(fallback.title));
-    const fallbackLanguage = FALLBACK_HINDI_TITLES.has(fallback.title)
-      ? 'Hindi'
-      : 'English';
-
-    if (!backend) {
-      return {
-        ...fallback,
-        language: fallback.language ?? fallbackLanguage,
-      };
-    }
-
-    return {
-      ...fallback,
-      id: backend.id,
-      artist: backend.artist || fallback.artist,
-      duration:
-        backend.duration && backend.duration !== '--:--'
-          ? backend.duration
-          : fallback.duration,
-      language: backend.language ?? fallback.language ?? fallbackLanguage,
-      genre: backend.genre ?? fallback.genre,
-      audioUrl: backend.audioUrl ?? fallback.audioUrl,
-      coverUrl: backend.coverUrl ?? fallback.coverUrl,
-    };
-  });
-
-  const seen = new Set(
-    fallbackEnriched.map((track) => normalizeTrackTitle(track.title))
-  );
-
-  const backendExtras = backendTracks.filter((track) => {
-    const key = normalizeTrackTitle(track.title);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-
-  return [...fallbackEnriched, ...backendExtras];
-}
-
 function buildDefaultPlaylists(catalog: Track[]): Playlist[] {
   return playlistBlueprints.map((blueprint) => {
     const moodTracks = catalog.filter((track) => track.mood === blueprint.mood);
@@ -1353,6 +1262,7 @@ function HomePage({
   const playerStateHandlerRef = useRef<(state: number) => void>(() => {});
   const advanceTrackRef = useRef<(direction: 1 | -1, automatic?: boolean) => void>(() => {});
   const playHistoryRef = useRef<number[]>([]);
+  const failedVideoIdsRef = useRef<Set<string>>(new Set());
 
   const historyIdRef = useRef<number | null>(null);
   const historySongIdRef = useRef<number | null>(null);
@@ -1653,7 +1563,10 @@ function HomePage({
 
     const playableIndexes = queue
       .map((track, index) => ({ track, index }))
-      .filter(({ track }) => Boolean(extractYouTubeVideoId(track.audioUrl)))
+      .filter(({ track }) => {
+        const videoId = extractYouTubeVideoId(track.audioUrl);
+        return Boolean(videoId && !failedVideoIdsRef.current.has(videoId));
+      })
       .map(({ index }) => index);
 
     if (playableIndexes.length === 0) return -1;
@@ -2052,6 +1965,12 @@ function HomePage({
       setIsPlaying(true);
       isPlayingRef.current = true;
       const track = currentTrackRef.current;
+      const videoId = extractYouTubeVideoId(track?.audioUrl);
+
+      if (videoId) {
+        failedVideoIdsRef.current.delete(videoId);
+      }
+
       if (track) beginListeningSession(track);
       return;
     }
@@ -2127,10 +2046,53 @@ function HomePage({
             onStateChange: (event: any) => {
               playerStateHandlerRef.current(event.data);
             },
-            onError: () => {
+            onError: (event: any) => {
               setIsPlaying(false);
               isPlayingRef.current = false;
-              setNotice('YouTube could not play this track. Try another song.');
+
+              const failedTrack = currentTrackRef.current;
+              const failedVideoId = extractYouTubeVideoId(failedTrack?.audioUrl);
+
+              if (failedVideoId) {
+                failedVideoIdsRef.current.add(failedVideoId);
+              }
+
+              console.error('YouTube playback error:', {
+                code: Number(event?.data),
+                title: failedTrack?.title,
+                videoId: failedVideoId,
+              });
+
+              const queue = playerTracksRef.current;
+              const nextIndex = findPlayableTrack(
+                1,
+                queue,
+                trackIndexRef.current
+              );
+
+              if (nextIndex === -1) {
+                setNotice(
+                  'No playable YouTube videos were found in this queue.'
+                );
+                return;
+              }
+
+              setNotice(
+                failedTrack
+                  ? `Skipping unavailable video for "${failedTrack.title}".`
+                  : 'Skipping an unavailable YouTube video.'
+              );
+
+              window.setTimeout(() => {
+                void switchToTrack(
+                  nextIndex,
+                  false,
+                  undefined,
+                  undefined,
+                  undefined,
+                  false
+                );
+              }, 250);
             },
           },
         });
@@ -5915,9 +5877,10 @@ function Router({
           return;
         }
 
-        // Keep the original MOOSIC catalogue visible, then enrich it with
-        // backend ids/audio URLs and append additional backend songs.
-        const activeCatalog = mergeBackendWithFallback(backendTracks);
+        // Production playlists must be built only from backend tracks that
+        // actually have a YouTube playback URL. The old fallback catalogue was
+        // display-only and contained titles with no audio source.
+        const activeCatalog = backendTracks;
 
         setCatalog(activeCatalog);
 
