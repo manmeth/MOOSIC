@@ -24,6 +24,7 @@ class User(Base):
 
     role = Column(String, nullable=False, default="user")
     is_premium = Column(Boolean, nullable=False, default=False)
+    profile_note = Column(String, nullable=True, default="")
 
     created_at = Column(DateTime, default=datetime.utcnow)
 

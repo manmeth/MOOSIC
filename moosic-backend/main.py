@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 from urllib.parse import quote_plus
 
+from dotenv import load_dotenv
+
 import bcrypt
 import jwt
 from fastapi import Depends, FastAPI, HTTPException, Query, status, Header
@@ -10,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from firewall import FirewallMiddleware
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from database import SessionLocal, create_tables, get_db, TransactionManager
@@ -18,14 +21,38 @@ import models
 import schemas
 
 
-SECRET_KEY = os.getenv("MOOSIC_SECRET_KEY", "moosic-development-secret-change-me")
+load_dotenv(Path(__file__).with_name(".env"))
+
+SECRET_KEY = os.getenv("MOOSIC_SECRET_KEY")
+if not SECRET_KEY or len(SECRET_KEY) < 32:
+    raise RuntimeError(
+        "MOOSIC_SECRET_KEY must be set to a strong value of at least 32 characters. "
+        "Copy .env.example to .env and set a private secret."
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 MANAGER_ROLE = "manager"
-MANAGER_REGISTRATION_CODE = os.getenv("MOOSIC_MANAGER_REGISTRATION_CODE", "manager-access-code")
+MANAGER_REGISTRATION_CODE = os.getenv("MOOSIC_MANAGER_REGISTRATION_CODE")
 
 
 create_tables()
+
+
+def ensure_user_profile_columns():
+    """Add profile columns to an existing database without deleting user data."""
+    db = SessionLocal()
+    try:
+        bind = db.get_bind()
+        column_names = {column["name"] for column in inspect(bind).get_columns("users")}
+
+        if "profile_note" not in column_names:
+            db.execute(text("ALTER TABLE users ADD COLUMN profile_note VARCHAR"))
+            db.commit()
+    finally:
+        db.close()
+
+
+ensure_user_profile_columns()
 
 
 app = FastAPI(
@@ -55,6 +82,19 @@ def serialize_model(obj):
     data = obj.__dict__.copy()
     data.pop("_sa_instance_state", None)
     return data
+
+
+def serialize_user_public(user):
+    return {
+        "user_id": user.id,
+        "name": user.name,
+        "username": user.username,
+        "email": user.email,
+        "role": user.role,
+        "is_premium": user.is_premium,
+        "profile_note": user.profile_note or "",
+        "created_at": user.created_at,
+    }
 
 
 def serialize_song(song):
@@ -96,6 +136,28 @@ def serialize_playlist(playlist):
     data = serialize_model(playlist)
     data["song_count"] = len(playlist.songs)
     return data
+
+
+def infer_stats_mood(song):
+    """Use explicit song mood when available, otherwise infer the same five rooms as the frontend."""
+    explicit = (song.mood or "").strip()
+    if explicit in {"Sad", "Happy", "Neutral", "Exhausted", "Angry"}:
+        return explicit
+
+    genre = (song.genre or "").lower()
+
+    if any(value in genre for value in ("ballad", "romance", "r&b", "soul")):
+        return "Sad"
+    if any(value in genre for value in ("hip hop", "dancehall", "alternative rock")):
+        return "Angry"
+    if any(value in genre for value in ("classical", "ambient", "acoustic")):
+        return "Exhausted"
+    if any(value in genre for value in ("synthwave", "indie pop", "electropop", "pop rock")):
+        return "Neutral"
+    if any(value in genre for value in ("dance pop", "house", "funk", "latin pop", "dance", "pop")):
+        return "Happy"
+
+    return "Neutral"
 
 
 def rank_songs_by_mood(songs, mood_preferences=None, genre_preferences=None, artist_preferences=None):
@@ -686,6 +748,7 @@ def create_user(
         email=user.email.lower().strip(),
         password=hash_password(user.password),
         role="user",
+        profile_note="",
     )
 
     db.add(new_user)
@@ -706,14 +769,11 @@ def create_user(
             "username": new_user.username,
             "email": new_user.email,
             "role": new_user.role,
+            "profile_note": new_user.profile_note or "",
         },
         "token": token,
     }
 
-@app.get("/users")
-def get_users(db: Session = Depends(get_db)):
-    users = db.query(models.User).all()
-    return [serialize_model(user) for user in users]
 
 
 @app.post("/login")
@@ -750,23 +810,12 @@ def login_user(
             "username": db_user.username,
             "email": db_user.email,
             "role": db_user.role,
+            "profile_note": db_user.profile_note or "",
         },
         "token": token,
     }
 
 
-@app.post("/artists")
-def create_artist(artist: schemas.ArtistCreate, db: Session = Depends(get_db)):
-    new_artist = models.Artist(name=artist.name, image_url=artist.image_url)
-    db.add(new_artist)
-    db.commit()
-    db.refresh(new_artist)
-
-    return {
-        "message": "Artist created successfully!",
-        "artist_id": new_artist.id,
-        "name": new_artist.name,
-    }
 def get_current_user(
     authorization: str = Header(None),
     db: Session = Depends(get_db),
@@ -851,6 +900,33 @@ def require_premium(current_user: models.User = Depends(get_current_user)):
     return current_user
 
 
+@app.get("/users")
+def get_users(
+    current_user: models.User = Depends(require_role(MANAGER_ROLE)),
+    db: Session = Depends(get_db),
+):
+    users = db.query(models.User).all()
+    return [serialize_user_public(user) for user in users]
+
+
+@app.post("/artists")
+def create_artist(
+    artist: schemas.ArtistCreate,
+    current_user: models.User = Depends(require_role(MANAGER_ROLE)),
+    db: Session = Depends(get_db),
+):
+    new_artist = models.Artist(name=artist.name, image_url=artist.image_url)
+    db.add(new_artist)
+    db.commit()
+    db.refresh(new_artist)
+
+    return {
+        "message": "Artist created successfully!",
+        "artist_id": new_artist.id,
+        "name": new_artist.name,
+    }
+
+
 @app.get("/me")
 def get_me(current_user=Depends(get_current_user)):
     return {
@@ -859,6 +935,43 @@ def get_me(current_user=Depends(get_current_user)):
         "username": current_user.username,
         "email": current_user.email,
         "role": current_user.role,
+        "profile_note": current_user.profile_note or "",
+        "created_at": current_user.created_at.isoformat() if current_user.created_at else None,
+    }
+
+
+@app.put("/me")
+def update_me(
+    update: schemas.UserProfileUpdate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if update.name is not None:
+        cleaned_name = update.name.strip()
+        if not cleaned_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Name cannot be empty",
+            )
+        current_user.name = cleaned_name
+
+    if update.profile_note is not None:
+        current_user.profile_note = update.profile_note.strip()
+
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
+
+    return {
+        "message": "Profile updated successfully",
+        "user": {
+            "user_id": current_user.id,
+            "name": current_user.name,
+            "username": current_user.username,
+            "email": current_user.email,
+            "role": current_user.role,
+            "profile_note": current_user.profile_note or "",
+        },
     }
 
 
@@ -917,8 +1030,8 @@ def subscribe_to_premium(
     payment = models.Payment(
         user_id=current_user.id,
         plan=request.plan.lower(),
-        amount=9.99,
-        currency="EUR",
+        amount=299.00,
+        currency="INR",
         status=payment_status,
         payment_date=datetime.utcnow(),
     )
@@ -979,7 +1092,11 @@ def get_artist_detail(artist_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/albums")
-def create_album(album: schemas.AlbumCreate, db: Session = Depends(get_db)):
+def create_album(
+    album: schemas.AlbumCreate,
+    current_user: models.User = Depends(require_role(MANAGER_ROLE)),
+    db: Session = Depends(get_db),
+):
     artist = db.query(models.Artist).filter(models.Artist.id == album.artist_id).first()
     if not artist:
         raise HTTPException(
@@ -1033,7 +1150,11 @@ def get_album_detail(album_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/songs")
-def create_song(song: schemas.SongCreate, db: Session = Depends(get_db)):
+def create_song(
+    song: schemas.SongCreate,
+    current_user: models.User = Depends(require_role(MANAGER_ROLE)),
+    db: Session = Depends(get_db),
+):
     artist = db.query(models.Artist).filter(models.Artist.id == song.artist_id).first()
     if not artist:
         raise HTTPException(
@@ -1084,6 +1205,43 @@ def get_songs(
     return [serialize_song(song) for song in songs]
 
 
+@app.get("/songs/genres")
+def get_genres(db: Session = Depends(get_db)):
+    genres = db.query(models.Song.genre).filter(models.Song.genre.isnot(None)).distinct().all()
+    return {"genres": [genre[0] for genre in genres]}
+
+
+
+@app.get("/songs/languages")
+def get_languages(db: Session = Depends(get_db)):
+    languages = db.query(models.Song.language).filter(models.Song.language.isnot(None)).distinct().all()
+    return {"languages": [language[0] for language in languages]}
+
+
+
+@app.get("/songs/search")
+def search_songs(q: str, limit: int = Query(10, ge=1, le=100), db: Session = Depends(get_db)):
+    normalized_query = q.strip()
+    if not normalized_query:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Search query cannot be empty")
+    query_term = f"%{normalized_query}%"
+    songs = (
+        db.query(models.Song)
+        .join(models.Artist, models.Artist.id == models.Song.artist_id)
+        .filter(
+            (models.Song.title.ilike(query_term))
+            | (models.Artist.name.ilike(query_term))
+            | (models.Song.genre.ilike(query_term))
+            | (models.Song.language.ilike(query_term))
+        )
+        .limit(limit)
+        .all()
+    )
+
+    return [serialize_song(song) for song in songs]
+
+
+
 @app.get("/songs/{song_id}")
 def get_song_detail(song_id: int, db: Session = Depends(get_db)):
     # DATABASE OPTIMIZATION: Use eager loading for song with relationships
@@ -1119,18 +1277,6 @@ def get_song_playback(song_id: int, db: Session = Depends(get_db)):
         "cover_url": song.cover_url,
         "is_playable": song.is_playable if song.is_playable is not None else bool(song.audio_url),
     }
-
-
-@app.get("/songs/genres")
-def get_genres(db: Session = Depends(get_db)):
-    genres = db.query(models.Song.genre).filter(models.Song.genre.isnot(None)).distinct().all()
-    return {"genres": [genre[0] for genre in genres]}
-
-
-@app.get("/songs/languages")
-def get_languages(db: Session = Depends(get_db)):
-    languages = db.query(models.Song.language).filter(models.Song.language.isnot(None)).distinct().all()
-    return {"languages": [language[0] for language in languages]}
 
 
 @app.get("/songs/genre/{genre_name}")
@@ -1173,30 +1319,14 @@ def get_library(db: Session = Depends(get_db)):
     }
 
 
-@app.get("/songs/search")
-def search_songs(q: str, limit: int = Query(10, ge=1, le=100), db: Session = Depends(get_db)):
-    normalized_query = q.strip()
-    if not normalized_query:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Search query cannot be empty")
-    query_term = f"%{normalized_query}%"
-    songs = (
-        db.query(models.Song)
-        .join(models.Artist, models.Artist.id == models.Song.artist_id)
-        .filter(
-            (models.Song.title.ilike(query_term))
-            | (models.Artist.name.ilike(query_term))
-            | (models.Song.genre.ilike(query_term))
-            | (models.Song.language.ilike(query_term))
-        )
-        .limit(limit)
-        .all()
-    )
-
-    return [serialize_song(song) for song in songs]
-
-
 @app.post("/manager/register")
 def register_manager(user: schemas.ManagerRegistration, db: Session = Depends(get_db)):
+    if not MANAGER_REGISTRATION_CODE:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Manager registration is not configured",
+        )
+
     if user.registration_code != MANAGER_REGISTRATION_CODE:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -1926,6 +2056,39 @@ def get_liked_songs(
     ]
 
 
+@app.delete("/users/{user_id}/liked-songs/{song_id}")
+def unlike_song(
+    user_id: int,
+    song_id: int,
+    current_user: models.User = Depends(require_self_or_403),
+    db: Session = Depends(get_db),
+):
+    if current_user.id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: you can only access your own resources",
+        )
+
+    liked_song = (
+        db.query(models.LikedSong)
+        .filter(
+            models.LikedSong.user_id == user_id,
+            models.LikedSong.song_id == song_id,
+        )
+        .first()
+    )
+
+    if not liked_song:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Liked song not found",
+        )
+
+    db.delete(liked_song)
+    db.commit()
+    return {"message": "Song removed from favorites"}
+
+
 @app.post("/users/{user_id}/listening-history")
 def record_listening_history(
     user_id: int,
@@ -1973,6 +2136,116 @@ def get_listening_history(
         .all()
     )
     return [serialize_model(item) for item in history]
+
+
+@app.patch("/users/{user_id}/listening-history/{history_id}")
+def update_listening_history(
+    user_id: int,
+    history_id: int,
+    update: schemas.ListeningHistoryUpdate,
+    current_user: models.User = Depends(require_self_or_403),
+    db: Session = Depends(get_db),
+):
+    if current_user.id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: you can only access your own resources",
+        )
+
+    history = (
+        db.query(models.ListeningHistory)
+        .filter(
+            models.ListeningHistory.id == history_id,
+            models.ListeningHistory.user_id == user_id,
+        )
+        .first()
+    )
+
+    if not history:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Listening history entry not found",
+        )
+
+    history.progress_seconds = max(0, update.progress_seconds)
+    history.completed = update.completed
+    history.skipped = update.skipped
+
+    db.commit()
+    db.refresh(history)
+    return serialize_model(history)
+
+
+@app.get("/users/{user_id}/listening-stats")
+def get_listening_stats(
+    user_id: int,
+    current_user: models.User = Depends(require_self_or_403),
+    db: Session = Depends(get_db),
+):
+    if current_user.id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: you can only access your own resources",
+        )
+
+    user = get_user_or_404(db, user_id)
+
+    now = datetime.utcnow()
+    month_start = datetime(now.year, now.month, 1)
+    if now.month == 12:
+        next_month = datetime(now.year + 1, 1, 1)
+    else:
+        next_month = datetime(now.year, now.month + 1, 1)
+
+    rows = (
+        db.query(models.ListeningHistory, models.Song)
+        .join(models.Song, models.Song.id == models.ListeningHistory.song_id)
+        .filter(
+            models.ListeningHistory.user_id == user_id,
+            models.ListeningHistory.played_at >= month_start,
+            models.ListeningHistory.played_at < next_month,
+        )
+        .all()
+    )
+
+    rotation_seconds = {
+        "Happy": 0,
+        "Neutral": 0,
+        "Sad": 0,
+        "Exhausted": 0,
+        "Angry": 0,
+    }
+
+    total_seconds = 0
+    for history, song in rows:
+        listened = max(0, history.progress_seconds or 0)
+        total_seconds += listened
+        rotation_seconds[infer_stats_mood(song)] += listened
+
+    if total_seconds > 0:
+        rotation = {
+            mood: round((seconds / total_seconds) * 100, 1)
+            for mood, seconds in rotation_seconds.items()
+        }
+    else:
+        rotation = {mood: 0.0 for mood in rotation_seconds}
+
+    favorite_tracks = (
+        db.query(models.LikedSong)
+        .filter(models.LikedSong.user_id == user_id)
+        .count()
+    )
+
+    return {
+        "month_label": now.strftime("%B"),
+        "year": now.year,
+        "total_seconds": total_seconds,
+        "hours_listened": round(total_seconds / 3600, 2),
+        "records_visited": len(rows),
+        "favorite_tracks": favorite_tracks,
+        "rotation": rotation,
+        "member_since": user.created_at.isoformat() if user.created_at else None,
+    }
 
 
 @app.put("/users/{user_id}/playback")
@@ -2067,7 +2340,12 @@ def remove_from_queue(
 
 # Admin endpoints for managing audio URLs
 @app.put("/admin/songs/{song_id}/audio-url")
-def update_song_audio_url(song_id: int, audio_url: str, db: Session = Depends(get_db)):
+def update_song_audio_url(
+    song_id: int,
+    audio_url: str,
+    current_user: models.User = Depends(require_role(MANAGER_ROLE)),
+    db: Session = Depends(get_db),
+):
     """Update the audio URL for a song (admin only)"""
     song = get_song_or_404(db, song_id)
     song.audio_url = audio_url
@@ -2082,7 +2360,10 @@ def update_song_audio_url(song_id: int, audio_url: str, db: Session = Depends(ge
 
 
 @app.get("/admin/songs/bulk-audio-urls")
-def get_bulk_audio_urls(db: Session = Depends(get_db)):
+def get_bulk_audio_urls(
+    current_user: models.User = Depends(require_role(MANAGER_ROLE)),
+    db: Session = Depends(get_db),
+):
     """Get all songs with their current audio URLs for bulk updates"""
     songs = db.query(models.Song).all()
     return [
@@ -2096,7 +2377,7 @@ def get_bulk_audio_urls(db: Session = Depends(get_db)):
     ]
 
 
-FRONTEND_DIST = Path(__file__).resolve().parents[1] / "Frontend" / "MOOSIC-visual-refresh-final" / "MOOSIC-visual-refresh" / "artifacts" / "moodsic-app" / "dist" / "public"
+FRONTEND_DIST = Path(__file__).resolve().parents[1] / "Frontend" / "MOOSIC-visual-refresh-final" / "MOOSIC-visual-refresh" / "artifacts" / "moodsic" / "dist" / "public"
 if (FRONTEND_DIST / "assets").is_dir():
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="frontend-assets")
 

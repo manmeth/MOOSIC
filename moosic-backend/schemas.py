@@ -22,6 +22,11 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
+
+class UserProfileUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    profile_note: str | None = Field(default=None, max_length=180)
+
 class ArtistCreate(BaseModel):
     name: str
     image_url: str | None = None
@@ -97,6 +102,12 @@ class LikeSongCreate(BaseModel):
 class ListeningHistoryCreate(BaseModel):
     song_id: int
     progress_seconds: int = 0
+    completed: bool = False
+    skipped: bool = False
+
+
+class ListeningHistoryUpdate(BaseModel):
+    progress_seconds: int = Field(default=0, ge=0)
     completed: bool = False
     skipped: bool = False
 
