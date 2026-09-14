@@ -56,3 +56,11 @@ pla make sure
 - Do not install a new dependency without showing me the exact package and asking for my approval first.
 - Do not commit or push to GitHub.
 After implementation, run the appropriate frontend build/check and fix any frontend errors  without touching the backend
+
+
+
+Database:I’m making a project called Moosic, a personalized music streaming app help me build the database step by step using FastAPI, Python, SQLAlchemy and SQLite. I want to create a database for users, songs, artists, albums and playlists, and connect it to a music API like Spotify so real songs can be searched and played. Please give me simple code, explain where to put it, and help me fix errors.
+-We're using YouTube URLs for the songs, but most of the links don't work. Can you help find out why and fix it so all the songs actually play when the frontend is connected? Also the YouTube player is showing YouTube's own video/logo instead of looking like Spotify, and some songs aren't showing up properly under the right mood can you fix that asw
+-how to remove this unplayable song
+
+
