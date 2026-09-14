@@ -2,9 +2,7 @@
 
 ## 1. Overview
 
-This document records the major technical contributions made by the Moosic project team. The contributions cover frontend development, backend/API implementation, database design, business logic, authentication and authorisation, security, AI-assisted functionality, Premium services, offline downloads, architecture, testing, integration, and technical improvements.
-
-The project follows the CIA III requirement that significant implementation work be traceable to identifiable tasks, working functionality, technical evidence, and the student responsible for the implementation or verification.
+The contributions cover frontend development, backend/API implementation, database design, business logic, authentication and authorisation, security, AI-assisted functionality, Premium services, offline downloads, architecture, testing, integration, and technical improvements.
 
 ---
 
@@ -223,7 +221,7 @@ The payment flow is a test/sandbox transaction rather than a claim of production
 
 ## 9. Offline Download Processing
 
-### Srinidhi — Premium-Controlled Downloads
+### Manmeet — Premium-Controlled Downloads
 
 The backend implements Premium-based download management.
 
@@ -499,18 +497,5 @@ This demonstrates problem identification, API contract alignment, implementation
 | Srinidhi | Authentication, JWT, bcrypt, authorisation, Premium/payment backend, Premium access control, downloads, integration/testing, quantitative scalability |
 | Udditee | Frontend, architecture, data-flow/component mapping, mood-based themes, dashboard/playlist UI, responsive UI |
 
-## 18. Evidence and Traceability
-
-Each significant technical contribution should be supported through the project implementation tracker and repository evidence such as:
-
-- GitHub commit.
-- Changed source file/module.
-- API response.
-- Database result.
-- Test result.
-- Screenshot.
-- Working demonstration.
 
 The final implementation tracker records the task, responsible student, AI assistance where applicable, completion/verification responsibility, date and evidence.
-
-The technical contributions described above should be interpreted together with the actual GitHub implementation and working system rather than as claims based only on documentation.
