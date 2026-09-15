@@ -4717,10 +4717,11 @@ function ProfilePage({
   authUser: AuthUser;
   setNotice: (notice: string) => void;
   onSignOut: () => void;
-  onSaveProfile: (name: string, profileNote: string) => Promise<boolean>;
+  onSaveProfile: (name: string, profileNote: string, username?: string) => Promise<boolean>;
 }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(authUser.name);
+  const [username, setUsername] = useState(authUser.username);
   const [profileNote, setProfileNote] = useState(authUser.profileNote ?? '');
   const [isSaving, setIsSaving] = useState(false);
   const [stats, setStats] = useState<ListeningStats | null>(null);
@@ -4728,8 +4729,9 @@ function ProfilePage({
 
   useEffect(() => {
     setName(authUser.name);
+    setUsername(authUser.username);
     setProfileNote(authUser.profileNote ?? '');
-  }, [authUser.name, authUser.profileNote]);
+  }, [authUser.name, authUser.username, authUser.profileNote]);
 
   useEffect(() => {
     let active = true;
@@ -4770,22 +4772,29 @@ function ProfilePage({
 
   const cancel = () => {
     setName(authUser.name);
+    setUsername(authUser.username);
     setProfileNote(authUser.profileNote ?? '');
     setEditing(false);
   };
 
   const save = async () => {
     const cleanedName = name.trim();
+    const cleanedUsername = username.trim();
 
     if (!cleanedName) {
       setNotice('Your name cannot be empty.');
       return;
     }
 
+    if (!cleanedUsername) {
+      setNotice('Your username cannot be empty.');
+      return;
+    }
+
     setIsSaving(true);
 
     try {
-      const saved = await onSaveProfile(cleanedName, profileNote.trim());
+      const saved = await onSaveProfile(cleanedName, profileNote.trim(), cleanedUsername);
       if (saved) {
         setEditing(false);
       }
@@ -4829,6 +4838,16 @@ function ProfilePage({
                 data-testid="input-profile-name"
               />
 
+              <label htmlFor="profile-username">Username</label>
+              <input
+                id="profile-username"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                maxLength={32}
+                placeholder="Choose a username"
+                data-testid="input-profile-username"
+              />
+
               <label htmlFor="profile-note">Currently into</label>
               <input
                 id="profile-note"
@@ -4860,7 +4879,7 @@ function ProfilePage({
             </div>
           ) : (
             <>
-              <h1>{authUser.username}</h1>
+              <h1 className="profile-username">{authUser.username}</h1>
               <p>
                 {authUser.name}
                 {currentNote ? ` · ${currentNote}` : ' · Tell MOOSIC what you’re currently into.'}
@@ -6282,7 +6301,8 @@ function Router({
 
   const updateProfile = async (
     name: string,
-    profileNote: string
+    profileNote: string,
+    username?: string
   ): Promise<boolean> => {
     try {
       const payload = await apiRequest('/me', {
@@ -6290,6 +6310,7 @@ function Router({
         body: JSON.stringify({
           name,
           profile_note: profileNote,
+          ...(username ? { username } : {}),
         }),
       }) as { user?: unknown };
 
