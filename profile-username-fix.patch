@@ -1,0 +1,110 @@
+--- a/moosic-backend/schemas.py
++++ b/moosic-backend/schemas.py
+@@ -25,6 +25,7 @@
+ 
+ class UserProfileUpdate(BaseModel):
+     name: str | None = Field(default=None, min_length=1, max_length=100)
++    username: str | None = Field(default=None, min_length=1, max_length=32)
+     profile_note: str | None = Field(default=None, max_length=180)
+ 
+ class ArtistCreate(BaseModel):
+--- a/moosic-backend/main.py
++++ b/moosic-backend/main.py
+@@ -1223,6 +1223,30 @@
+             )
+         current_user.name = cleaned_name
+ 
++    if update.username is not None:
++        cleaned_username = update.username.strip().lower()
++        if not cleaned_username:
++            raise HTTPException(
++                status_code=status.HTTP_400_BAD_REQUEST,
++                detail="Username cannot be empty",
++            )
++        if "@" in cleaned_username:
++            raise HTTPException(
++                status_code=status.HTTP_400_BAD_REQUEST,
++                detail="Username can't be an email address",
++            )
++        existing = (
++            db.query(models.User)
++            .filter(models.User.username == cleaned_username, models.User.id != current_user.id)
++            .first()
++        )
++        if existing:
++            raise HTTPException(
++                status_code=status.HTTP_400_BAD_REQUEST,
++                detail="That username is already taken",
++            )
++        current_user.username = cleaned_username
++
+     if update.profile_note is not None:
+         current_user.profile_note = update.profile_note.strip()
+ 
+--- a/Frontend/MOOSIC-visual-refresh-final/MOOSIC-visual-refresh/artifacts/moodsic-app/src/App.tsx
++++ b/Frontend/MOOSIC-visual-refresh-final/MOOSIC-visual-refresh/artifacts/moodsic-app/src/App.tsx
+@@ -946,10 +946,34 @@
+   );
+ }
+ 
+-function ProfilePage({ authUser, setNotice, onSignOut, isPremium, downloadedSongs }: { authUser: AuthUser; setNotice: (notice: string) => void; onSignOut: () => void; isPremium: boolean; downloadedSongs: DownloadedSong[] }) {
++function ProfilePage({ authUser, setAuthUser, setNotice, onSignOut, isPremium, downloadedSongs }: { authUser: AuthUser; setAuthUser: (user: AuthUser) => void; setNotice: (notice: string) => void; onSignOut: () => void; isPremium: boolean; downloadedSongs: DownloadedSong[] }) {
+   const [editing, setEditing] = useState(false);
+   const [name, setName] = useState(authUser.name);
+-  const save = () => { setEditing(false); setNotice('Your profile note has been updated.'); };
++  const [username, setUsername] = useState(authUser.username);
++  const [saveError, setSaveError] = useState('');
++  const [isSaving, setIsSaving] = useState(false);
++  const save = async () => {
++    setSaveError('');
++    setIsSaving(true);
++    try {
++      const payload = await api.apiFetch<{ user: AuthUserRecord }>('/me', {
++        method: 'PUT',
++        body: { name: name.trim(), username: username.trim() },
++      });
++      const updatedUser = payload?.user;
++      setAuthUser({
++        ...authUser,
++        name: updatedUser?.name ?? name.trim(),
++        username: (updatedUser?.username ?? username.trim()) as string,
++      });
++      setEditing(false);
++      setNotice('Your profile has been updated.');
++    } catch (error) {
++      setSaveError(error instanceof Error ? error.message : 'Could not save your profile. Try again.');
++    } finally {
++      setIsSaving(false);
++    }
++  };
+   return (
+     <section className="page">
+       <div className="eyebrow animate-rise">Your listening log / 006</div>
+@@ -957,7 +981,7 @@
+         <div className="profile-layout" style={{ marginTop: 27 }}>
+         <div className="profile-panel animate-rise-2">
+           <div className="profile-avatar">{avatarInitial(authUser)}</div>
+-          {editing ? <div className="edit-form"><label htmlFor="profile-name">Name</label><input id="profile-name" value={name} onChange={(event) => setName(event.target.value)} data-testid="input-profile-name" /><label htmlFor="profile-note">Currently into</label><input id="profile-note" defaultValue="Slow records and late walks" data-testid="input-profile-note" /><div style={{ display: 'flex', gap: 8, marginTop: 7 }}><button className="solid-button small-button" onClick={save} data-testid="button-save-profile">Save changes</button><button className="outline-button small-button" onClick={() => setEditing(false)} data-testid="button-cancel-profile">Cancel</button></div></div> : <><h1>{authUser.username}</h1><p>{name} · Listening from a small room with the window open.</p><div className="profile-actions"><button className="outline-button small-button" onClick={() => setEditing(true)} data-testid="button-edit-profile"><Pencil size={14} /> Edit profile</button><button className="sign-out-button" onClick={onSignOut} data-testid="button-sign-out"><LogOut size={14} /> Sign out</button></div></>}
++          {editing ? <div className="edit-form"><label htmlFor="profile-name">Name</label><input id="profile-name" value={name} onChange={(event) => setName(event.target.value)} data-testid="input-profile-name" /><label htmlFor="profile-username">Username</label><input id="profile-username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Choose a username" data-testid="input-profile-username" /><label htmlFor="profile-note">Currently into</label><input id="profile-note" defaultValue="Slow records and late walks" data-testid="input-profile-note" />{saveError && <p className="auth-message" role="alert">{saveError}</p>}<div style={{ display: 'flex', gap: 8, marginTop: 7 }}><button className="solid-button small-button" onClick={save} disabled={isSaving} data-testid="button-save-profile">{isSaving ? 'Saving…' : 'Save changes'}</button><button className="outline-button small-button" onClick={() => { setEditing(false); setUsername(authUser.username); setSaveError(''); }} data-testid="button-cancel-profile">Cancel</button></div></div> : <><h1 className="profile-username">{authUser.username}</h1><p>{name} · Listening from a small room with the window open.</p><div className="profile-actions"><button className="outline-button small-button" onClick={() => setEditing(true)} data-testid="button-edit-profile"><Pencil size={14} /> Edit profile</button><button className="sign-out-button" onClick={onSignOut} data-testid="button-sign-out"><LogOut size={14} /> Sign out</button></div></>}
+           <div className="premium-status-row">
+             <span className={`premium-chip ${isPremium ? 'premium' : 'free'}`}>
+               {isPremium ? <Crown size={14} /> : <Lock size={14} />}
+@@ -1354,7 +1378,7 @@
+               }
+             }} /></Route>
+             <Route path="/theme"><Themes selectedColor={customTheme} setSelectedColor={setCustomTheme} setNotice={setNotice} isPremium={isPremium} themePalette={themePalette} /></Route>
+-            <Route path="/profile"><ProfilePage authUser={authUser as AuthUser} setNotice={setNotice} onSignOut={signOut} isPremium={isPremium} downloadedSongs={downloadedSongs} /></Route>
++            <Route path="/profile"><ProfilePage authUser={authUser as AuthUser} setAuthUser={setAuthUser as (user: AuthUser) => void} setNotice={setNotice} onSignOut={signOut} isPremium={isPremium} downloadedSongs={downloadedSongs} /></Route>
+             {authUser?.role === 'manager' && <Route path="/manager"><ManagerPage /></Route>}
+             <Route><NotFound /></Route>
+           </Switch>
+--- a/Frontend/MOOSIC-visual-refresh-final/MOOSIC-visual-refresh/artifacts/moodsic-app/src/index.css
++++ b/Frontend/MOOSIC-visual-refresh-final/MOOSIC-visual-refresh/artifacts/moodsic-app/src/index.css
+@@ -575,6 +575,7 @@
+ .profile-panel, .summary-panel { padding: 25px; }
+ .profile-avatar { width: 84px; height: 84px; display: grid; place-items: center; border: 1px solid #f1bc46; border-radius: 50%; color: #f1bc46; font-size: 27px; margin-bottom: 22px; }
+ .profile-panel h1 { font-size: clamp(39px, 6vw, 64px); line-height: .86; font-weight: 400; letter-spacing: -.05em; margin: 0 0 8px; }
++.profile-panel h1.profile-username { max-width: 100%; overflow-wrap: break-word; word-break: break-word; }
+ .profile-panel p { color: #97939d; font-size: 15px; }
+ .profile-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 18px; }
+ .sign-out-button { display: inline-flex; align-items: center; gap: 7px; border: 1px solid rgba(218,85,59,.58); padding: 7px 11px; color: #ffb2a3; background: rgba(218,85,59,.1); cursor: pointer; font-size: 12px; transition: transform .2s ease, background .2s ease; }

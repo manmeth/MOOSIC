@@ -575,6 +575,7 @@ a { color: inherit; text-decoration: none; }
 .profile-panel, .summary-panel { padding: 25px; }
 .profile-avatar { width: 84px; height: 84px; display: grid; place-items: center; border: 1px solid #f1bc46; border-radius: 50%; color: #f1bc46; font-size: 27px; margin-bottom: 22px; }
 .profile-panel h1 { font-size: clamp(39px, 6vw, 64px); line-height: .86; font-weight: 400; letter-spacing: -.05em; margin: 0 0 8px; }
+.profile-panel h1.profile-username { max-width: 100%; overflow-wrap: break-word; word-break: break-word; }
 .profile-panel p { color: #97939d; font-size: 15px; }
 .profile-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 18px; }
 .sign-out-button { display: inline-flex; align-items: center; gap: 7px; border: 1px solid rgba(218,85,59,.58); padding: 7px 11px; color: #ffb2a3; background: rgba(218,85,59,.1); cursor: pointer; font-size: 12px; transition: transform .2s ease, background .2s ease; }

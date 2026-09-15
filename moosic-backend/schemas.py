@@ -25,6 +25,7 @@ class UserLogin(BaseModel):
 
 class UserProfileUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
+    username: str | None = Field(default=None, min_length=1, max_length=32)
     profile_note: str | None = Field(default=None, max_length=180)
 
 class ArtistCreate(BaseModel):

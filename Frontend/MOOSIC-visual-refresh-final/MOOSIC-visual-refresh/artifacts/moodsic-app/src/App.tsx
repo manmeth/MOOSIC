@@ -946,10 +946,34 @@ function SearchPage({ library, selectMood, setNotice, addTrackToPlaylist }: { li
   );
 }
 
-function ProfilePage({ authUser, setNotice, onSignOut, isPremium, downloadedSongs }: { authUser: AuthUser; setNotice: (notice: string) => void; onSignOut: () => void; isPremium: boolean; downloadedSongs: DownloadedSong[] }) {
+function ProfilePage({ authUser, setAuthUser, setNotice, onSignOut, isPremium, downloadedSongs }: { authUser: AuthUser; setAuthUser: (user: AuthUser) => void; setNotice: (notice: string) => void; onSignOut: () => void; isPremium: boolean; downloadedSongs: DownloadedSong[] }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(authUser.name);
-  const save = () => { setEditing(false); setNotice('Your profile note has been updated.'); };
+  const [username, setUsername] = useState(authUser.username);
+  const [saveError, setSaveError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const save = async () => {
+    setSaveError('');
+    setIsSaving(true);
+    try {
+      const payload = await api.apiFetch<{ user: AuthUserRecord }>('/me', {
+        method: 'PUT',
+        body: { name: name.trim(), username: username.trim() },
+      });
+      const updatedUser = payload?.user;
+      setAuthUser({
+        ...authUser,
+        name: updatedUser?.name ?? name.trim(),
+        username: (updatedUser?.username ?? username.trim()) as string,
+      });
+      setEditing(false);
+      setNotice('Your profile has been updated.');
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Could not save your profile. Try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
   return (
     <section className="page">
       <div className="eyebrow animate-rise">Your listening log / 006</div>
@@ -957,7 +981,7 @@ function ProfilePage({ authUser, setNotice, onSignOut, isPremium, downloadedSong
         <div className="profile-layout" style={{ marginTop: 27 }}>
         <div className="profile-panel animate-rise-2">
           <div className="profile-avatar">{avatarInitial(authUser)}</div>
-          {editing ? <div className="edit-form"><label htmlFor="profile-name">Name</label><input id="profile-name" value={name} onChange={(event) => setName(event.target.value)} data-testid="input-profile-name" /><label htmlFor="profile-note">Currently into</label><input id="profile-note" defaultValue="Slow records and late walks" data-testid="input-profile-note" /><div style={{ display: 'flex', gap: 8, marginTop: 7 }}><button className="solid-button small-button" onClick={save} data-testid="button-save-profile">Save changes</button><button className="outline-button small-button" onClick={() => setEditing(false)} data-testid="button-cancel-profile">Cancel</button></div></div> : <><h1>{authUser.username}</h1><p>{name} · Listening from a small room with the window open.</p><div className="profile-actions"><button className="outline-button small-button" onClick={() => setEditing(true)} data-testid="button-edit-profile"><Pencil size={14} /> Edit profile</button><button className="sign-out-button" onClick={onSignOut} data-testid="button-sign-out"><LogOut size={14} /> Sign out</button></div></>}
+          {editing ? <div className="edit-form"><label htmlFor="profile-name">Name</label><input id="profile-name" value={name} onChange={(event) => setName(event.target.value)} data-testid="input-profile-name" /><label htmlFor="profile-username">Username</label><input id="profile-username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Choose a username" data-testid="input-profile-username" /><label htmlFor="profile-note">Currently into</label><input id="profile-note" defaultValue="Slow records and late walks" data-testid="input-profile-note" />{saveError && <p className="auth-message" role="alert">{saveError}</p>}<div style={{ display: 'flex', gap: 8, marginTop: 7 }}><button className="solid-button small-button" onClick={save} disabled={isSaving} data-testid="button-save-profile">{isSaving ? 'Saving…' : 'Save changes'}</button><button className="outline-button small-button" onClick={() => { setEditing(false); setUsername(authUser.username); setSaveError(''); }} data-testid="button-cancel-profile">Cancel</button></div></div> : <><h1 className="profile-username">{authUser.username}</h1><p>{name} · Listening from a small room with the window open.</p><div className="profile-actions"><button className="outline-button small-button" onClick={() => setEditing(true)} data-testid="button-edit-profile"><Pencil size={14} /> Edit profile</button><button className="sign-out-button" onClick={onSignOut} data-testid="button-sign-out"><LogOut size={14} /> Sign out</button></div></>}
           <div className="premium-status-row">
             <span className={`premium-chip ${isPremium ? 'premium' : 'free'}`}>
               {isPremium ? <Crown size={14} /> : <Lock size={14} />}
@@ -1354,7 +1378,7 @@ function Router({
               }
             }} /></Route>
             <Route path="/theme"><Themes selectedColor={customTheme} setSelectedColor={setCustomTheme} setNotice={setNotice} isPremium={isPremium} themePalette={themePalette} /></Route>
-            <Route path="/profile"><ProfilePage authUser={authUser as AuthUser} setNotice={setNotice} onSignOut={signOut} isPremium={isPremium} downloadedSongs={downloadedSongs} /></Route>
+            <Route path="/profile"><ProfilePage authUser={authUser as AuthUser} setAuthUser={setAuthUser as (user: AuthUser) => void} setNotice={setNotice} onSignOut={signOut} isPremium={isPremium} downloadedSongs={downloadedSongs} /></Route>
             {authUser?.role === 'manager' && <Route path="/manager"><ManagerPage /></Route>}
             <Route><NotFound /></Route>
           </Switch>

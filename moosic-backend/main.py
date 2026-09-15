@@ -1223,6 +1223,30 @@ def update_me(
             )
         current_user.name = cleaned_name
 
+    if update.username is not None:
+        cleaned_username = update.username.strip().lower()
+        if not cleaned_username:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username cannot be empty",
+            )
+        if "@" in cleaned_username:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username can't be an email address",
+            )
+        existing = (
+            db.query(models.User)
+            .filter(models.User.username == cleaned_username, models.User.id != current_user.id)
+            .first()
+        )
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="That username is already taken",
+            )
+        current_user.username = cleaned_username
+
     if update.profile_note is not None:
         current_user.profile_note = update.profile_note.strip()
 
