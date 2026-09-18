@@ -94,5 +94,7 @@ We believe technology should enhance the way people connect with music—not com
 
 ### 🐄 Moosic
 **Your Daily Dose of Moo-sic.**
+
 **Check it out at** -> https://moosic-alpha.vercel.app/
+You would need a good internet connection and a playable device.
 
